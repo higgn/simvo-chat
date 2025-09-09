@@ -19,7 +19,7 @@ let peers = {}; // To store peer connections
 // --- INITIALIZATION ---
 // Connect to the signaling server.
 // In development, this points to localhost. In production, change this to your Render/Heroku URL.
-const socket = io('http://localhost:3000'); 
+const socket = io('https://simvo-chat-server.onrender.com'); 
 const ROOM_ID = window.location.pathname.substring(1);
 
 // WebRTC STUN servers (using public Google servers)
