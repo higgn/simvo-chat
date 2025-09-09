@@ -1,0 +1,8 @@
+# Dependencies
+/node_modules
+
+# Local Environment Variables
+.env
+
+# SSL Certificates (if you made them)
+*.pem

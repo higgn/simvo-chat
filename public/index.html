@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simvo Chat</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="/socket.io/socket.io.js" defer></script>
+    <script src="script.js" defer></script>
+</head>
+<body>
+    <!-- Homepage / Landing Page View -->
+    <div id="homepage" class="view active">
+        <div class="container">
+            <h1>Simvo Chat</h1>
+            <p>High-end, synchronous video chat. No bloat, no storage, pure privacy.</p>
+            <a href="/new-room" class="start-button">Start a Meeting</a>
+        </div>
+    </div>
+
+    <!-- Video Chat Room View -->
+    <div id="room" class="view">
+        <div id="video-grid">
+            <div class="video-container" id="local-video-container">
+                <video id="local-video" autoplay muted playsinline></video>
+                <span class="name-tag">You</span>
+            </div>
+        </div>
+
+        <div id="controls">
+            <button id="mic-btn" class="control-btn">
+                <!-- SVG for Microphone -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+            </button>
+            <button id="video-btn" class="control-btn">
+                <!-- SVG for Video Camera -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+            </button>
+            <button id="end-call-btn" class="control-btn end-call">
+                <!-- SVG for End Call -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 4.11 1.73 2 2 0 0 1 1.73 2.06v1.42a2 2 0 0 1-2.09 2 19.94 19.94 0 0 1-18.41-18.41 2 2 0 0 1 2-2.09h1.42a2 2 0 0 1 2.06 1.73 12.84 12.84 0 0 0 1.73 4.11 2 2 0 0 1-.45 2.11L8.09 9.91"></path></svg>
+            </button>
+             <button id="fullscreen-btn" class="control-btn">
+                <!-- SVG for Fullscreen -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+            </button>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,198 @@
+/* Simvo Chat - Minimalist Stylesheet */
+:root {
+    --background: #0a0a0a;
+    --foreground: #f5f5f5;
+    --primary: #ffffff;
+    --secondary: #272727;
+    --accent: #e50914; /* A single, strong accent for the end call button */
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--background);
+    color: var(--foreground);
+    overflow: hidden;
+}
+
+.view {
+    display: none;
+    width: 100vw;
+    height: 100vh;
+}
+
+.view.active {
+    display: flex;
+}
+
+/* Homepage Styles */
+#homepage .container {
+    margin: auto;
+    text-align: center;
+    padding: 2rem;
+}
+
+#homepage h1 {
+    font-size: 3rem;
+    font-weight: 700;
+    letter-spacing: -1px;
+    margin-bottom: 0.5rem;
+}
+
+#homepage p {
+    font-size: 1.1rem;
+    color: #a0a0a0;
+    margin-bottom: 2rem;
+}
+
+.start-button {
+    display: inline-block;
+    background-color: var(--primary);
+    color: var(--background);
+    padding: 1rem 2rem;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1rem;
+    border-radius: 5px;
+    transition: transform 0.2s ease;
+}
+
+.start-button:hover {
+    transform: scale(1.05);
+}
+
+/* Room Styles */
+#room {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+}
+
+#video-grid {
+    display: flex;
+    flex-grow: 1;
+    width: 100%;
+    height: 100%;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.video-container {
+    position: relative;
+    background-color: var(--secondary);
+    border-radius: 8px;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.name-tag {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    background: rgba(0, 0, 0, 0.5);
+    color: var(--foreground);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+#local-video-container {
+    position: absolute;
+    bottom: 80px; /* Above controls */
+    right: 20px;
+    width: 200px;
+    height: 150px;
+    border: 2px solid var(--primary);
+    z-index: 10;
+    transition: all 0.3s ease;
+}
+
+/* Controls */
+#controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    padding: 1rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+    opacity: 1;
+    transition: opacity 0.3s ease;
+}
+
+body.fullscreen-active #controls,
+body.fullscreen-active #local-video-container {
+    opacity: 0;
+}
+
+body.fullscreen-active:hover #controls,
+body.fullscreen-active:hover #local-video-container {
+    opacity: 1;
+}
+
+.control-btn {
+    background-color: var(--secondary);
+    border: none;
+    color: var(--foreground);
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: background-color 0.2s ease;
+}
+
+.control-btn.active {
+    background-color: var(--primary);
+    color: var(--background);
+}
+
+.control-btn:hover {
+    background-color: #3f3f3f;
+}
+
+.control-btn.end-call {
+    background-color: var(--accent);
+}
+
+.control-btn.end-call:hover {
+    background-color: #ff3b47;
+}
+
+/* For when only one person is in the call */
+#video-grid:has(.video-container:nth-child(2)) #local-video-container {
+   /* show the small preview */
+    display: block;
+}
+#video-grid:not(:has(.video-container:nth-child(2))) #local-video-container {
+    /* Hide the small preview if you're alone, make main view 100% */
+    display: none;
+}
+#video-grid:not(:has(.video-container:nth-child(2))) .video-container {
+    /* Main video takes full space when alone */
+     width: 100%;
+     height: 100%;
+}
