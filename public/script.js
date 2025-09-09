@@ -1,10 +1,14 @@
-// Simvo Chat - Frontend WebRTC Logic (Robust Version)
+// Simvo Chat - Frontend WebRTC Logic (v2 - Feature Enhanced)
 
 // --- STATE MANAGEMENT ---
 let localStream;
 let isMicOn = true;
 let isVideoOn = true;
-let peers = {}; // To store peer connections
+let isScreenSharing = false;
+let isNoiseSuppressionEnabled = true;
+let peers = {};
+let videoDevices = [];
+let currentVideoDeviceIndex = 0;
 
 // --- INITIALIZATION ---
 const ROOM_ID = window.location.pathname.substring(1);
@@ -17,21 +21,19 @@ const configuration = {
     ]
 };
 
-// --- DOM ELEMENTS (Lazy Loaded) ---
+// --- DOM ELEMENTS (Lazy Loaded in their respective initializers) ---
 const homepage = document.getElementById('homepage');
 const room = document.getElementById('room');
 const videoGrid = document.getElementById('video-grid');
 const localVideo = document.getElementById('local-video');
 
-// --- CORE LOGIC ---
+// --- CORE LOGIC & ROUTING ---
 const handlePath = () => {
     if (ROOM_ID) {
-        // We are in a room
         homepage.classList.remove('active');
         room.classList.add('active');
         initializeRoom();
     } else {
-        // We are on the homepage
         homepage.classList.add('active');
         room.classList.remove('active');
         initializeHomepage();
@@ -40,10 +42,8 @@ const handlePath = () => {
 
 const initializeHomepage = () => {
     const startBtn = document.getElementById('start-btn');
-    // Check if the button exists before adding listener
     if (startBtn) {
         startBtn.addEventListener('click', () => {
-            // Generate a room ID client-side and navigate
             const newRoomId = Math.random().toString(36).substring(2, 14);
             window.location.href = `/${newRoomId}`;
         });
@@ -51,21 +51,15 @@ const initializeHomepage = () => {
 };
 
 const initializeRoom = async () => {
-    // Initialize room controls ONLY when we are in a room
-    const micBtn = document.getElementById('mic-btn');
-    const videoBtn = document.getElementById('video-btn');
-    const endCallBtn = document.getElementById('end-call-btn');
-    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    // A. Initialize UI Controls
+    initializeControls();
 
-    if (micBtn) micBtn.addEventListener('click', toggleMic);
-    if (videoBtn) videoBtn.addEventListener('click', toggleVideo);
-    if (endCallBtn) endCallBtn.addEventListener('click', () => { window.location.href = '/'; });
-    if (fullscreenBtn) fullscreenBtn.addEventListener('click', () => { document.body.classList.toggle('fullscreen-active'); });
+    // B. Get available media devices
+    await getVideoDevices();
 
-    // Start the camera and join the socket room
+    // C. Start the camera and join the socket room
     try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localVideo.srcObject = localStream;
+        await startMedia();
         socket.emit('join-room', ROOM_ID);
     } catch (error) {
         console.error('Failed to get local stream', error);
@@ -73,19 +67,174 @@ const initializeRoom = async () => {
     }
 };
 
-const toggleMic = () => {
-    isMicOn = !isMicOn;
-    localStream.getAudioTracks()[0].enabled = isMicOn;
-    document.getElementById('mic-btn').classList.toggle('active', isMicOn);
-};
+// --- FEATURE IMPLEMENTATIONS ---
 
-const toggleVideo = () => {
-    isVideoOn = !isVideoOn;
-    localStream.getVideoTracks()[0].enabled = isVideoOn;
-    document.getElementById('video-btn').classList.toggle('active', isVideoOn);
-};
+async function startMedia(videoDeviceId = undefined, audioSettings = { echoCancellation: true, noiseSuppression: true }) {
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+    }
 
-// --- WEBRTC & SOCKET.IO EVENT HANDLING --- (No changes below this line)
+    const videoConstraints = {
+        deviceId: videoDeviceId ? { exact: videoDeviceId } : undefined,
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+    };
+    
+    localStream = await navigator.mediaDevices.getUserMedia({ 
+        video: videoConstraints, 
+        audio: audioSettings 
+    });
+
+    localVideo.srcObject = localStream;
+    // When starting media, ensure tracks are sent to existing peers
+    updateAllPeerTracks();
+}
+
+async function getVideoDevices() {
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        videoDevices = devices.filter(device => device.kind === 'videoinput');
+        const flipCameraBtn = document.getElementById('flip-camera-btn');
+        if (videoDevices.length > 1) {
+            flipCameraBtn.style.display = 'flex';
+        }
+    } catch (error) {
+        console.error('Error enumerating devices:', error);
+    }
+}
+
+async function flipCamera() {
+    if (videoDevices.length < 2) return;
+    if (isScreenSharing) await toggleScreenShare(); // Stop screen share first
+
+    currentVideoDeviceIndex = (currentVideoDeviceIndex + 1) % videoDevices.length;
+    const newVideoDevice = videoDevices[currentVideoDeviceIndex];
+    
+    // Get new video stream
+    const newStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: newVideoDevice.deviceId } } });
+    const newVideoTrack = newStream.getVideoTracks()[0];
+
+    // Update local video
+    localVideo.srcObject = newStream;
+    // Replace the track for all peers
+    await replaceTrackForPeers(newVideoTrack);
+    // Update local stream reference
+    localStream.removeTrack(localStream.getVideoTracks()[0]);
+    localStream.addTrack(newVideoTrack);
+}
+
+async function toggleScreenShare() {
+    const screenShareBtn = document.getElementById('screen-share-btn');
+    if (!isScreenSharing) {
+        try {
+            const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+            const screenTrack = screenStream.getVideoTracks()[0];
+            
+            await replaceTrackForPeers(screenTrack);
+            isScreenSharing = true;
+            localVideo.srcObject = screenStream;
+            localVideo.style.transform = 'scaleX(1)'; // Don't mirror screen share
+            screenShareBtn.classList.add('active');
+
+            // When user clicks browser's "Stop sharing" button
+            screenTrack.onended = () => {
+                toggleScreenShare(); // This will trigger the 'else' block
+            };
+        } catch (error) {
+            console.error('Error sharing screen:', error);
+        }
+    } else {
+        const cameraTrack = (await navigator.mediaDevices.getUserMedia({ video: true })).getVideoTracks()[0];
+        await replaceTrackForPeers(cameraTrack);
+        isScreenSharing = false;
+        localVideo.srcObject = localStream;
+        localVideo.style.transform = 'scaleX(-1)';
+        screenShareBtn.classList.remove('active');
+    }
+}
+
+async function toggleNoiseSuppression(enabled) {
+    isNoiseSuppressionEnabled = enabled;
+    // Get a new audio track with the desired setting
+    const newAudioStream = await navigator.mediaDevices.getUserMedia({ audio: { noiseSuppression: enabled, echoCancellation: true } });
+    const newAudioTrack = newAudioStream.getAudioTracks()[0];
+    await replaceTrackForPeers(newAudioTrack, 'audio');
+    // Update local stream reference
+    localStream.removeTrack(localStream.getAudioTracks()[0]);
+    localStream.addTrack(newAudioTrack);
+}
+
+function applyVideoFilter(filter) {
+    document.querySelectorAll('#video-grid video').forEach(v => {
+        v.style.filter = filter;
+    });
+}
+
+// --- UTILITY FUNCTIONS ---
+
+async function replaceTrackForPeers(newTrack, kind = 'video') {
+    for (const peerId in peers) {
+        const peerConnection = peers[peerId];
+        const sender = peerConnection.getSenders().find(s => s.track.kind === kind);
+        if (sender) {
+            await sender.replaceTrack(newTrack);
+        }
+    }
+}
+
+function updateAllPeerTracks() {
+    for (const peerId in peers) {
+        const peerConnection = peers[peerId];
+        localStream.getTracks().forEach(track => {
+            const sender = peerConnection.getSenders().find(s => s.track.kind == track.kind);
+            if(sender) {
+                sender.replaceTrack(track);
+            }
+        });
+    }
+}
+
+// --- UI CONTROLS INITIALIZER ---
+function initializeControls() {
+    const micBtn = document.getElementById('mic-btn');
+    const videoBtn = document.getElementById('video-btn');
+    const endCallBtn = document.getElementById('end-call-btn');
+    const screenShareBtn = document.getElementById('screen-share-btn');
+    const flipCameraBtn = document.getElementById('flip-camera-btn');
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsModal = document.getElementById('settings-modal');
+    const closeModalBtn = document.querySelector('.close-button');
+    const noiseSuppressionToggle = document.getElementById('noise-suppression-toggle');
+    const videoFilterSelect = document.getElementById('video-filter-select');
+
+    if (micBtn) micBtn.addEventListener('click', () => {
+        isMicOn = !isMicOn;
+        localStream.getAudioTracks()[0].enabled = isMicOn;
+        micBtn.classList.toggle('active', isMicOn);
+    });
+    if (videoBtn) videoBtn.addEventListener('click', () => {
+        isVideoOn = !isVideoOn;
+        localStream.getVideoTracks()[0].enabled = isVideoOn;
+        videoBtn.classList.toggle('active', isVideoOn);
+    });
+    if (endCallBtn) endCallBtn.addEventListener('click', () => { window.location.href = '/'; });
+    if (screenShareBtn) screenShareBtn.addEventListener('click', toggleScreenShare);
+    if (flipCameraBtn) flipCameraBtn.addEventListener('click', flipCamera);
+    
+    // Settings Modal Logic
+    if (settingsBtn) settingsBtn.addEventListener('click', () => { settingsModal.style.display = 'flex'; });
+    if (closeModalBtn) closeModalBtn.addEventListener('click', () => { settingsModal.style.display = 'none'; });
+    window.addEventListener('click', (event) => {
+        if (event.target == settingsModal) {
+            settingsModal.style.display = "none";
+        }
+    });
+
+    if (noiseSuppressionToggle) noiseSuppressionToggle.addEventListener('change', (e) => toggleNoiseSuppression(e.target.checked));
+    if (videoFilterSelect) videoFilterSelect.addEventListener('change', (e) => applyVideoFilter(e.target.value));
+}
+
+// --- WEBRTC & SOCKET.IO EVENT HANDLING --- (No changes below this line, but included for completeness)
 
 socket.on('user-connected', (userId) => {
     console.log(`New user connected: ${userId}`);
@@ -128,7 +277,7 @@ socket.on('user-disconnected', (userId) => {
     }
 });
 
-// --- HELPER FUNCTIONS ---
+// --- WEBRTC HELPER FUNCTIONS ---
 
 const createPeerConnection = (userId) => {
     const peerConnection = new RTCPeerConnection(configuration);

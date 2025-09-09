@@ -59,6 +59,8 @@ body {
     font-weight: 600;
     font-size: 1rem;
     border-radius: 5px;
+    border: none;
+    cursor: pointer;
     transition: transform 0.2s ease;
 }
 
@@ -95,12 +97,20 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
+    transition: transform 0.3s ease;
 }
 
 video {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    /* Flip video for a mirror effect on local preview */
+    transform: scaleX(-1);
+    transition: filter 0.3s ease;
+}
+
+video#local-video {
+    transform: scaleX(-1); /* Your own video is mirrored */
 }
 
 .name-tag {
@@ -116,7 +126,7 @@ video {
 
 #local-video-container {
     position: absolute;
-    bottom: 80px; /* Above controls */
+    bottom: 80px;
     right: 20px;
     width: 200px;
     height: 150px;
@@ -182,17 +192,120 @@ body.fullscreen-active:hover #local-video-container {
     background-color: #ff3b47;
 }
 
-/* For when only one person is in the call */
-#video-grid:has(.video-container:nth-child(2)) #local-video-container {
-   /* show the small preview */
-    display: block;
+#flip-camera-btn {
+    display: none; /* Hidden by default, shown by JS if multiple cameras exist */
 }
-#video-grid:not(:has(.video-container:nth-child(2))) #local-video-container {
-    /* Hide the small preview if you're alone, make main view 100% */
-    display: none;
+/* On devices that can hover (laptops), show the flip button */
+@media (hover: hover) {
+    #flip-camera-btn { display: none; }
 }
-#video-grid:not(:has(.video-container:nth-child(2))) .video-container {
-    /* Main video takes full space when alone */
-     width: 100%;
-     height: 100%;
+/* On devices that cannot hover (mobiles), show it by default */
+@media (hover: none) {
+    #flip-camera-btn { display: flex; }
+}
+
+/* Settings Modal Styles */
+.modal {
+    display: none; 
+    position: fixed;
+    z-index: 100;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.6);
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-content {
+    background-color: #1c1c1c;
+    margin: auto;
+    padding: 20px;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 400px;
+    position: relative;
+}
+
+.close-button {
+    color: #aaa;
+    position: absolute;
+    top: 10px;
+    right: 20px;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.close-button:hover, .close-button:focus {
+    color: var(--primary);
+}
+
+.modal-content h2 {
+    margin-bottom: 20px;
+}
+
+.setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    font-size: 1rem;
+}
+
+/* Cool Toggle Switch */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #3f3f3f;
+    transition: .4s;
+    border-radius: 34px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: var(--primary);
+}
+
+input:checked + .slider:before {
+    transform: translateX(20px);
+}
+
+/* Video Filter Dropdown */
+#video-filter-select {
+    background-color: var(--secondary);
+    color: var(--foreground);
+    border: 1px solid #3f3f3f;
+    border-radius: 4px;
+    padding: 5px;
 }
