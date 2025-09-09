@@ -1,6 +1,7 @@
 // Simvo Chat - Frontend WebRTC Logic
 
 // --- DOM ELEMENTS ---
+const startBtn = document.getElementById('start-btn');
 const homepage = document.getElementById('homepage');
 const room = document.getElementById('room');
 const videoGrid = document.getElementById('video-grid');
@@ -174,6 +175,12 @@ endCallBtn.addEventListener('click', () => {
 
 fullscreenBtn.addEventListener('click', () => {
     document.body.classList.toggle('fullscreen-active');
+});
+startBtn.addEventListener('click', () => {
+    // Generate a room ID client-side
+    const roomId = Math.random().toString(36).substring(2, 14);
+    // Redirect to the new room URL
+    window.location.href = `/${roomId}`;
 });
 
 // --- RUN ---
