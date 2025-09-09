@@ -9,6 +9,8 @@ let isNoiseSuppressionEnabled = true;
 let peers = {};
 let videoDevices = [];
 let currentVideoDeviceIndex = 0;
+let participantCount = 1;
+let connectionStatus = 'connected';
 
 // --- INITIALIZATION ---
 const ROOM_ID = window.location.pathname.substring(1);
@@ -47,6 +49,13 @@ const initializeHomepage = () => {
             const newRoomId = Math.random().toString(36).substring(2, 14);
             window.location.href = `/${newRoomId}`;
         });
+    }
+};
+
+const joinRoom = () => {
+    const roomId = prompt('Enter Room ID to join:');
+    if (roomId && roomId.trim()) {
+        window.location.href = `/${roomId.trim()}`;
     }
 };
 
@@ -135,6 +144,7 @@ async function toggleScreenShare() {
             localVideo.srcObject = screenStream;
             localVideo.style.transform = 'scaleX(1)'; // Don't mirror screen share
             screenShareBtn.classList.add('active');
+            screenShareBtn.title = 'Stop sharing';
 
             // When user clicks browser's "Stop sharing" button
             screenTrack.onended = () => {
@@ -144,12 +154,29 @@ async function toggleScreenShare() {
             console.error('Error sharing screen:', error);
         }
     } else {
-        const cameraTrack = (await navigator.mediaDevices.getUserMedia({ video: true })).getVideoTracks()[0];
+        // Get new camera stream
+        const videoConstraints = {
+            deviceId: videoDevices[currentVideoDeviceIndex]?.deviceId ? 
+                { exact: videoDevices[currentVideoDeviceIndex].deviceId } : undefined,
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+        };
+        
+        const cameraStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
+        const cameraTrack = cameraStream.getVideoTracks()[0];
+        
         await replaceTrackForPeers(cameraTrack);
         isScreenSharing = false;
+        
+        // Update local stream
+        const oldVideoTrack = localStream.getVideoTracks()[0];
+        localStream.removeTrack(oldVideoTrack);
+        localStream.addTrack(cameraTrack);
+        
         localVideo.srcObject = localStream;
         localVideo.style.transform = 'scaleX(-1)';
         screenShareBtn.classList.remove('active');
+        screenShareBtn.title = 'Share screen';
     }
 }
 
@@ -194,6 +221,79 @@ function updateAllPeerTracks() {
     }
 }
 
+// --- CHAT FUNCTIONALITY ---
+let chatMessages = [];
+let isChatOpen = false;
+
+function toggleChat() {
+    const chatPanel = document.getElementById('chat-panel');
+    const chatToggleBtn = document.getElementById('chat-toggle-btn');
+    
+    isChatOpen = !isChatOpen;
+    
+    if (isChatOpen) {
+        chatPanel.classList.add('active');
+        chatToggleBtn.classList.add('active');
+    } else {
+        chatPanel.classList.remove('active');
+        chatToggleBtn.classList.remove('active');
+    }
+}
+
+function sendMessage() {
+    const chatInput = document.getElementById('chat-input');
+    const message = chatInput.value.trim();
+    
+    if (message) {
+        const messageData = {
+            text: message,
+            timestamp: new Date().toLocaleTimeString(),
+            sender: 'own'
+        };
+        
+        addMessageToChat(messageData);
+        socket.emit('chat-message', { roomId: ROOM_ID, message: messageData });
+        chatInput.value = '';
+        adjustTextareaHeight(chatInput);
+    }
+}
+
+function addMessageToChat(messageData) {
+    const chatMessages = document.getElementById('chat-messages');
+    const messageElement = document.createElement('div');
+    messageElement.className = `message ${messageData.sender}`;
+    
+    messageElement.innerHTML = `
+        <div>${messageData.text}</div>
+        <div class="message-time">${messageData.timestamp}</div>
+    `;
+    
+    chatMessages.appendChild(messageElement);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function adjustTextareaHeight(textarea) {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+}
+
+function updateIconState(button, isActive, onIcon, offIcon) {
+    const onSvg = button.querySelector(onIcon);
+    const offSvg = button.querySelector(offIcon);
+    
+    if (isActive) {
+        if (onSvg) onSvg.style.display = 'block';
+        if (offSvg) offSvg.style.display = 'none';
+        button.classList.add('active');
+        button.classList.remove('muted');
+    } else {
+        if (onSvg) onSvg.style.display = 'none';
+        if (offSvg) offSvg.style.display = 'block';
+        button.classList.remove('active');
+        button.classList.add('muted');
+    }
+}
+
 // --- UI CONTROLS INITIALIZER ---
 function initializeControls() {
     const micBtn = document.getElementById('mic-btn');
@@ -202,24 +302,51 @@ function initializeControls() {
     const screenShareBtn = document.getElementById('screen-share-btn');
     const flipCameraBtn = document.getElementById('flip-camera-btn');
     const settingsBtn = document.getElementById('settings-btn');
+    const chatToggleBtn = document.getElementById('chat-toggle-btn');
+    const chatCloseBtn = document.getElementById('chat-close');
+    const sendMessageBtn = document.getElementById('send-message');
+    const chatInput = document.getElementById('chat-input');
     const settingsModal = document.getElementById('settings-modal');
     const closeModalBtn = document.querySelector('.close-button');
     const noiseSuppressionToggle = document.getElementById('noise-suppression-toggle');
     const videoFilterSelect = document.getElementById('video-filter-select');
 
+    // Microphone control with icon states
     if (micBtn) micBtn.addEventListener('click', () => {
         isMicOn = !isMicOn;
         localStream.getAudioTracks()[0].enabled = isMicOn;
-        micBtn.classList.toggle('active', isMicOn);
+        updateIconState(micBtn, isMicOn, '.mic-on', '.mic-off');
+        micBtn.title = isMicOn ? 'Mute microphone' : 'Unmute microphone';
     });
+
+    // Video control with icon states
     if (videoBtn) videoBtn.addEventListener('click', () => {
         isVideoOn = !isVideoOn;
         localStream.getVideoTracks()[0].enabled = isVideoOn;
-        videoBtn.classList.toggle('active', isVideoOn);
+        updateIconState(videoBtn, isVideoOn, '.video-on', '.video-off');
+        videoBtn.title = isVideoOn ? 'Turn off camera' : 'Turn on camera';
     });
+
+    // Other controls
     if (endCallBtn) endCallBtn.addEventListener('click', () => { window.location.href = '/'; });
     if (screenShareBtn) screenShareBtn.addEventListener('click', toggleScreenShare);
     if (flipCameraBtn) flipCameraBtn.addEventListener('click', flipCamera);
+    
+    // Chat controls
+    if (chatToggleBtn) chatToggleBtn.addEventListener('click', toggleChat);
+    if (chatCloseBtn) chatCloseBtn.addEventListener('click', toggleChat);
+    if (sendMessageBtn) sendMessageBtn.addEventListener('click', sendMessage);
+    
+    // Chat input handling
+    if (chatInput) {
+        chatInput.addEventListener('input', (e) => adjustTextareaHeight(e.target));
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    }
     
     // Settings Modal Logic
     if (settingsBtn) settingsBtn.addEventListener('click', () => { settingsModal.style.display = 'flex'; });
@@ -238,6 +365,8 @@ function initializeControls() {
 
 socket.on('user-connected', (userId) => {
     console.log(`New user connected: ${userId}`);
+    participantCount++;
+    updateParticipantCount();
     callUser(userId);
 });
 
@@ -267,6 +396,9 @@ socket.on('ice-candidate', (payload) => {
 
 socket.on('user-disconnected', (userId) => {
     console.log(`User disconnected: ${userId}`);
+    participantCount = Math.max(1, participantCount - 1);
+    updateParticipantCount();
+    
     if (peers[userId]) {
         peers[userId].close();
         delete peers[userId];
@@ -275,6 +407,57 @@ socket.on('user-disconnected', (userId) => {
     if (videoElement) {
         videoElement.parentElement.remove();
     }
+});
+
+// Chat socket events
+socket.on('chat-message', (data) => {
+    const messageData = {
+        ...data.message,
+        sender: 'other'
+    };
+    addMessageToChat(messageData);
+});
+
+// Connection status management
+function updateConnectionStatus(status) {
+    const connectionDot = document.getElementById('connection-dot');
+    const connectionText = document.getElementById('connection-text');
+    
+    if (connectionDot && connectionText) {
+        connectionDot.className = `connection-dot ${status}`;
+        
+        switch (status) {
+            case 'connected':
+                connectionText.textContent = 'Connected';
+                break;
+            case 'connecting':
+                connectionText.textContent = 'Connecting...';
+                break;
+            case 'disconnected':
+                connectionText.textContent = 'Disconnected';
+                break;
+        }
+    }
+}
+
+function updateParticipantCount() {
+    const participantCounter = document.getElementById('participant-counter');
+    if (participantCounter) {
+        participantCounter.textContent = `${participantCount} participant${participantCount !== 1 ? 's' : ''}`;
+    }
+}
+
+// Socket connection events
+socket.on('connect', () => {
+    updateConnectionStatus('connected');
+});
+
+socket.on('disconnect', () => {
+    updateConnectionStatus('disconnected');
+});
+
+socket.on('reconnecting', () => {
+    updateConnectionStatus('connecting');
 });
 
 // --- WEBRTC HELPER FUNCTIONS ---
