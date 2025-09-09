@@ -1,15 +1,4 @@
-// Simvo Chat - Frontend WebRTC Logic
-
-// --- DOM ELEMENTS ---
-const startBtn = document.getElementById('start-btn');
-const homepage = document.getElementById('homepage');
-const room = document.getElementById('room');
-const videoGrid = document.getElementById('video-grid');
-const localVideo = document.getElementById('local-video');
-const micBtn = document.getElementById('mic-btn');
-const videoBtn = document.getElementById('video-btn');
-const endCallBtn = document.getElementById('end-call-btn');
-const fullscreenBtn = document.getElementById('fullscreen-btn');
+// Simvo Chat - Frontend WebRTC Logic (Robust Version)
 
 // --- STATE MANAGEMENT ---
 let localStream;
@@ -18,12 +7,9 @@ let isVideoOn = true;
 let peers = {}; // To store peer connections
 
 // --- INITIALIZATION ---
-// Connect to the signaling server.
-// In development, this points to localhost. In production, change this to your Render/Heroku URL.
-const socket = io('https://simvo-chat-server.onrender.com'); 
 const ROOM_ID = window.location.pathname.substring(1);
+const socket = io('https://simvo-chat-server.onrender.com'); 
 
-// WebRTC STUN servers (using public Google servers)
 const configuration = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -31,19 +17,52 @@ const configuration = {
     ]
 };
 
+// --- DOM ELEMENTS (Lazy Loaded) ---
+const homepage = document.getElementById('homepage');
+const room = document.getElementById('room');
+const videoGrid = document.getElementById('video-grid');
+const localVideo = document.getElementById('local-video');
+
 // --- CORE LOGIC ---
 const handlePath = () => {
     if (ROOM_ID) {
+        // We are in a room
         homepage.classList.remove('active');
         room.classList.add('active');
-        startChat();
+        initializeRoom();
     } else {
+        // We are on the homepage
         homepage.classList.add('active');
         room.classList.remove('active');
+        initializeHomepage();
     }
 };
 
-const startChat = async () => {
+const initializeHomepage = () => {
+    const startBtn = document.getElementById('start-btn');
+    // Check if the button exists before adding listener
+    if (startBtn) {
+        startBtn.addEventListener('click', () => {
+            // Generate a room ID client-side and navigate
+            const newRoomId = Math.random().toString(36).substring(2, 14);
+            window.location.href = `/${newRoomId}`;
+        });
+    }
+};
+
+const initializeRoom = async () => {
+    // Initialize room controls ONLY when we are in a room
+    const micBtn = document.getElementById('mic-btn');
+    const videoBtn = document.getElementById('video-btn');
+    const endCallBtn = document.getElementById('end-call-btn');
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+
+    if (micBtn) micBtn.addEventListener('click', toggleMic);
+    if (videoBtn) videoBtn.addEventListener('click', toggleVideo);
+    if (endCallBtn) endCallBtn.addEventListener('click', () => { window.location.href = '/'; });
+    if (fullscreenBtn) fullscreenBtn.addEventListener('click', () => { document.body.classList.toggle('fullscreen-active'); });
+
+    // Start the camera and join the socket room
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         localVideo.srcObject = localStream;
@@ -54,11 +73,22 @@ const startChat = async () => {
     }
 };
 
-// --- WEBRTC & SOCKET.IO EVENT HANDLING ---
+const toggleMic = () => {
+    isMicOn = !isMicOn;
+    localStream.getAudioTracks()[0].enabled = isMicOn;
+    document.getElementById('mic-btn').classList.toggle('active', isMicOn);
+};
+
+const toggleVideo = () => {
+    isVideoOn = !isVideoOn;
+    localStream.getVideoTracks()[0].enabled = isVideoOn;
+    document.getElementById('video-btn').classList.toggle('active', isVideoOn);
+};
+
+// --- WEBRTC & SOCKET.IO EVENT HANDLING --- (No changes below this line)
 
 socket.on('user-connected', (userId) => {
     console.log(`New user connected: ${userId}`);
-    // As the existing user, I will create and send an offer
     callUser(userId);
 });
 
@@ -104,17 +134,14 @@ const createPeerConnection = (userId) => {
     const peerConnection = new RTCPeerConnection(configuration);
     peers[userId] = peerConnection;
 
-    // Add local stream tracks to the connection
     localStream.getTracks().forEach(track => {
         peerConnection.addTrack(track, localStream);
     });
 
-    // Handle incoming remote stream
     peerConnection.ontrack = (event) => {
         addRemoteStream(userId, event.streams[0]);
     };
 
-    // Handle ICE candidates
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
             socket.emit('ice-candidate', { target: userId, candidate: event.candidate });
@@ -133,7 +160,7 @@ const callUser = async (userId) => {
 };
 
 const addRemoteStream = (userId, stream) => {
-    if (document.getElementById(userId)) return; // Avoid duplicate videos
+    if (document.getElementById(userId)) return;
 
     const videoContainer = document.createElement('div');
     videoContainer.classList.add('video-container');
@@ -146,42 +173,12 @@ const addRemoteStream = (userId, stream) => {
 
     const nameTag = document.createElement('span');
     nameTag.classList.add('name-tag');
-    nameTag.innerText = 'Peer'; // Or a generated name
+    nameTag.innerText = 'Peer';
 
     videoContainer.appendChild(remoteVideo);
     videoContainer.appendChild(nameTag);
     videoGrid.appendChild(videoContainer);
 };
-
-// --- UI CONTROLS ---
-
-micBtn.addEventListener('click', () => {
-    isMicOn = !isMicOn;
-    localStream.getAudioTracks()[0].enabled = isMicOn;
-    micBtn.classList.toggle('active', isMicOn);
-    // Update SVG icon if needed
-});
-
-videoBtn.addEventListener('click', () => {
-    isVideoOn = !isVideoOn;
-    localStream.getVideoTracks()[0].enabled = isVideoOn;
-    videoBtn.classList.toggle('active', isVideoOn);
-    // Update SVG icon if needed
-});
-
-endCallBtn.addEventListener('click', () => {
-    window.location.href = '/';
-});
-
-fullscreenBtn.addEventListener('click', () => {
-    document.body.classList.toggle('fullscreen-active');
-});
-startBtn.addEventListener('click', () => {
-    // Generate a room ID client-side
-    const roomId = Math.random().toString(36).substring(2, 14);
-    // Redirect to the new room URL
-    window.location.href = `/${roomId}`;
-});
 
 // --- RUN ---
 handlePath();
