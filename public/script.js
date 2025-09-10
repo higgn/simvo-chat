@@ -333,20 +333,27 @@ function showNotification(message) {
 async function replaceTrackForPeers(newTrack, kind = 'video') {
     for (const peerId in peers) {
         const peerConnection = peers[peerId];
-        const sender = peerConnection.getSenders().find(s => s.track.kind === kind);
+        if (!peerConnection || !peerConnection.getSenders) continue;
+        const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === kind);
         if (sender) {
-            await sender.replaceTrack(newTrack);
+            try {
+                await sender.replaceTrack(newTrack);
+            } catch (err) {
+                console.warn('replaceTrack failed for', peerId, err);
+            }
         }
     }
 }
 
 function updateAllPeerTracks() {
+    if (!localStream) return;
     for (const peerId in peers) {
         const peerConnection = peers[peerId];
+        if (!peerConnection || !peerConnection.getSenders) continue;
         localStream.getTracks().forEach(track => {
-            const sender = peerConnection.getSenders().find(s => s.track.kind == track.kind);
-            if(sender) {
-                sender.replaceTrack(track);
+            const sender = peerConnection.getSenders().find(s => s.track && s.track.kind == track.kind);
+            if (sender) {
+                try { sender.replaceTrack(track); } catch (err) { console.warn('updateAllPeerTracks replace failed', err); }
             }
         });
     }
@@ -447,7 +454,9 @@ function initializeControls() {
     // Microphone control with icon states
     if (micBtn) micBtn.addEventListener('click', () => {
         isMicOn = !isMicOn;
-        localStream.getAudioTracks()[0].enabled = isMicOn;
+        if (localStream && localStream.getAudioTracks().length) {
+            localStream.getAudioTracks()[0].enabled = isMicOn;
+        }
         updateIconState(micBtn, isMicOn, '.mic-on', '.mic-off');
         micBtn.title = isMicOn ? 'Mute microphone' : 'Unmute microphone';
     });
@@ -455,7 +464,9 @@ function initializeControls() {
     // Video control with icon states
     if (videoBtn) videoBtn.addEventListener('click', () => {
         isVideoOn = !isVideoOn;
-        localStream.getVideoTracks()[0].enabled = isVideoOn;
+        if (localStream && localStream.getVideoTracks().length) {
+            localStream.getVideoTracks()[0].enabled = isVideoOn;
+        }
         updateIconState(videoBtn, isVideoOn, '.video-on', '.video-off');
         videoBtn.title = isVideoOn ? 'Turn off camera' : 'Turn on camera';
     });
@@ -713,12 +724,15 @@ const createPeerConnection = (userId) => {
     const peerConnection = new RTCPeerConnection(configuration);
     peers[userId] = peerConnection;
 
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-    });
+    // If localStream isn't ready yet, skip adding tracks now - updateAllPeerTracks will add them later
+    if (localStream && localStream.getTracks) {
+        localStream.getTracks().forEach(track => {
+            try { peerConnection.addTrack(track, localStream); } catch (err) { console.warn('addTrack failed', err); }
+        });
+    }
 
     peerConnection.ontrack = (event) => {
-        addRemoteStream(userId, event.streams[0]);
+    addRemoteStream(userId, event.streams[0]);
     };
 
     peerConnection.onicecandidate = (event) => {
@@ -749,6 +763,12 @@ const addRemoteStream = (userId, stream) => {
     remoteVideo.srcObject = stream;
     remoteVideo.autoplay = true;
     remoteVideo.playsInline = true;
+
+    // Attempt to start playback; many browsers block autoplay without user interaction
+    remoteVideo.addEventListener('loadedmetadata', () => {
+        const p = remoteVideo.play();
+        if (p && p.catch) p.catch(err => { /* ignore autoplay errors until user interacts */ });
+    });
 
     const nameTag = document.createElement('span');
     nameTag.classList.add('name-tag');
