@@ -359,6 +359,86 @@ function initializeControls() {
 
     if (noiseSuppressionToggle) noiseSuppressionToggle.addEventListener('change', (e) => toggleNoiseSuppression(e.target.checked));
     if (videoFilterSelect) videoFilterSelect.addEventListener('change', (e) => applyVideoFilter(e.target.value));
+
+    // Controls collapse / expand
+    const controlsToggle = document.getElementById('controls-toggle-btn');
+    const controlsBar = document.getElementById('controls');
+    if (controlsToggle && controlsBar) {
+        controlsToggle.addEventListener('click', () => {
+            controlsBar.classList.toggle('collapsed');
+            // toggle reduced aria label
+            controlsToggle.title = controlsBar.classList.contains('collapsed') ? 'Expand controls' : 'More controls';
+        });
+    }
+
+    // Make local preview draggable and resizable
+    const localContainer = document.getElementById('local-video-container');
+    if (localContainer) {
+        let isDragging = false;
+        let startX = 0, startY = 0, origX = 0, origY = 0;
+
+        const onPointerDown = (e) => {
+            // only start drag on primary button / touch
+            if (e.button !== undefined && e.button !== 0) return;
+            isDragging = true;
+            localContainer.setPointerCapture?.(e.pointerId);
+            startX = e.clientX;
+            startY = e.clientY;
+            const rect = localContainer.getBoundingClientRect();
+            origX = rect.right - rect.width; // left
+            origY = rect.bottom - rect.height; // top
+        };
+
+        const onPointerMove = (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            // compute new right/bottom based on dx/dy to keep positioning anchored from bottom-right
+            const newRight = Math.max(8, (window.innerWidth - (origX + dx)));
+            const newBottom = Math.max(8, (window.innerHeight - (origY + dy)));
+            localContainer.style.right = `${newRight}px`;
+            localContainer.style.bottom = `${newBottom}px`;
+        };
+
+        const onPointerUp = (e) => {
+            if (!isDragging) return;
+            isDragging = false;
+            try { localContainer.releasePointerCapture?.(e.pointerId); } catch(e){}
+        };
+
+        // Use pointer events for unified mouse/touch support
+        localContainer.addEventListener('pointerdown', onPointerDown);
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+
+        // Resizable - allow user to drag the corner via native resize; add visual class when resizing
+        let resizeObserver = null;
+        try {
+            const ro = new ResizeObserver(() => {
+                localContainer.classList.add('resizing');
+                clearTimeout(localContainer.__resizeTimeout);
+                localContainer.__resizeTimeout = setTimeout(() => localContainer.classList.remove('resizing'), 250);
+            });
+            ro.observe(localContainer);
+            resizeObserver = ro;
+        } catch (e) {
+            // ResizeObserver may not be supported in older browsers; ignore gracefully
+        }
+    }
+
+    // Simple signal quality updater (hook for real metrics later)
+    const signalEl = document.getElementById('signal-quality');
+    if (signalEl) {
+        const states = ['good', 'fair', 'poor'];
+        let idx = 0;
+        setInterval(() => {
+            // rotate for demo; real app should set based on network stats
+            signalEl.classList.remove('good','fair','poor');
+            signalEl.classList.add(states[idx]);
+            idx = (idx + 1) % states.length;
+        }, 4000);
+    }
 }
 
 // --- WEBRTC & SOCKET.IO EVENT HANDLING --- (No changes below this line, but included for completeness)

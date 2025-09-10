@@ -452,6 +452,69 @@ video#local-video {
     border-color: var(--accent-secondary);
 }
 
+/* Make local preview look premium and allow drag/resize */
+#local-video-container {
+    border-radius: 12px !important;
+    overflow: hidden;
+    touch-action: none; /* allow pointer dragging */
+    resize: both;
+}
+
+#local-video-container.resizing {
+    transition: none !important;
+    outline: 2px solid rgba(59,130,246,0.12) !important;
+}
+
+#local-video-container .name-tag {
+    bottom: 8px;
+    left: 8px;
+    background: rgba(10,10,10,0.7);
+    border: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Drag handle visual (invisible but accessible) */
+#local-video-container::before {
+    content: '';
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: transparent;
+    z-index: 75;
+    cursor: move;
+}
+
+/* Collapsed controls look (single collapsed button) */
+#controls.collapsed {
+    width: 64px !important;
+    left: auto !important;
+    right: 12px !important;
+    bottom: 12px !important;
+    padding: 8px !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    border-radius: 999px !important;
+}
+
+#controls.collapsed .control-btn:not(#controls-toggle-btn) {
+    display: none !important;
+}
+
+/* Signal quality bars */
+.signal-quality {
+    margin-left: 10px;
+    color: var(--success);
+    display: inline-flex;
+    align-items: center;
+}
+.signal-quality .bar { opacity: 0.18; }
+.signal-quality.good .bar { opacity: 1; }
+.signal-quality.fair .b1, .signal-quality.fair .b2 { opacity: 1; }
+.signal-quality.poor .b1 { opacity: 1; color: var(--warning); }
+
+
 /* Controls */
 #controls {
     position: absolute;
@@ -1231,4 +1294,119 @@ input:focus-visible,
 select:focus-visible {
     outline: 2px solid var(--accent-secondary);
     outline-offset: 2px;
+}
+
+/* === Dark-mode enforcement + mobile-friendly control overrides === */
+/* These rules intentionally use !important to override any inline or 3rd-party styles
+   that were causing white backgrounds / black text on small screens. */
+html, body, .view, .view.active, #room, #video-grid {
+    background-color: var(--background) !important;
+    color: var(--foreground) !important;
+}
+
+/* Ensure status badges and name tags are readable on dark backgrounds */
+.connection-status,
+.participant-count,
+.name-tag {
+    color: var(--foreground) !important;
+    background: rgba(14,14,14,0.7) !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+}
+
+/* Make controls fixed & compact on mobile so they're always reachable */
+@media (max-width: 768px) {
+    #controls {
+        position: fixed !important;
+        left: 12px !important;
+        right: 12px !important;
+        bottom: env(safe-area-inset-bottom, 12px) !important;
+        transform: none !important;
+        width: auto !important;
+        min-width: unset !important;
+        border-radius: 999px !important;
+        padding: 8px 10px !important;
+        display: flex !important;
+        justify-content: center !important;
+        gap: 8px !important;
+        z-index: 60 !important;
+        background: rgba(18,18,18,0.9) !important;
+        border: 1px solid rgba(255,255,255,0.04) !important;
+        backdrop-filter: blur(8px) !important;
+    }
+
+    /* Slightly smaller touch targets but still accessible */
+    .control-btn {
+        width: 44px !important;
+        height: 44px !important;
+        border-radius: 50% !important;
+    }
+
+    /* Local preview should sit above controls, not overlap them */
+    #local-video-container {
+        right: 14px !important;
+        bottom: calc(64px + env(safe-area-inset-bottom, 12px)) !important;
+        width: clamp(80px, 18vw, 120px) !important;
+        height: clamp(60px, 13vw, 90px) !important;
+        border-width: 1px !important;
+        border-color: rgba(255,255,255,0.08) !important;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.45) !important;
+        z-index: 70 !important;
+    }
+
+    /* Keep chat panel accessible as bottom sheet on mobile */
+    #chat-panel {
+        width: 100% !important;
+        height: 48% !important;
+        bottom: 0 !important;
+        right: 0 !important;
+        top: auto !important;
+        transform: translateY(100%) !important;
+        border-left: none !important;
+        border-top: 1px solid rgba(255,255,255,0.04) !important;
+        border-radius: var(--radius) var(--radius) 0 0 !important;
+    }
+
+    /* Make sure the video grid can scroll if content is taller than viewport */
+    #video-grid {
+        height: calc(100vh - 140px) !important;
+        overflow-y: auto !important;
+        padding-bottom: 160px !important; /* space for fixed controls + preview */
+    }
+}
+
+@media (max-width: 480px) {
+    /* Extra compact controls for very small screens */
+    #controls {
+        padding: 6px 8px !important;
+        gap: 6px !important;
+    }
+
+    .control-btn {
+        width: 40px !important;
+        height: 40px !important;
+    }
+
+    #local-video-container {
+        width: 72px !important;
+        height: 54px !important;
+        bottom: calc(56px + env(safe-area-inset-bottom, 8px)) !important;
+        right: 10px !important;
+    }
+
+    /* Ensure top indicators don't get clipped on very small heights */
+    .connection-status, .participant-count {
+        top: 8px !important;
+        padding: 6px 8px !important;
+        font-size: 0.7rem !important;
+    }
+}
+
+/* Safety: if any element was accidentally forcing a light background, reset it */
+*[style*="background-color: white"], *[style*="background:#fff"], *[style*="#ffffff"] {
+    background-color: transparent !important;
+}
+
+/* small tweak: make control icons higher contrast on dark bg */
+.control-btn svg {
+    color: var(--foreground) !important;
 }
