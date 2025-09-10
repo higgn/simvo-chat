@@ -16,6 +16,13 @@ let connectionStatus = 'connected';
 const ROOM_ID = window.location.pathname.substring(1);
 const socket = io('https://simvo-chat-server.onrender.com'); 
 
+// Persistent client id so refresh doesn't create a new logical identity client-side
+let CLIENT_ID = localStorage.getItem('simvo_client_id');
+if (!CLIENT_ID) {
+    CLIENT_ID = Math.random().toString(36).substring(2, 12);
+    localStorage.setItem('simvo_client_id', CLIENT_ID);
+}
+
 const configuration = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -69,7 +76,8 @@ const initializeRoom = async () => {
     // C. Start the camera and join the socket room
     try {
         await startMedia();
-        socket.emit('join-room', ROOM_ID);
+    // send clientId to let server optionally dedupe persistent clients (server may ignore it)
+    socket.emit('join-room', { roomId: ROOM_ID, clientId: CLIENT_ID });
     } catch (error) {
         console.error('Failed to get local stream', error);
         alert('Could not access your camera and microphone. Please check permissions.');
@@ -439,15 +447,51 @@ function initializeControls() {
             idx = (idx + 1) % states.length;
         }, 4000);
     }
+
+    // Gestures: double-tap to expand, long-press to minimize (touch-friendly)
+    if (localContainer) {
+        let lastTap = 0;
+        let longPressTimer = null;
+
+        const onTapStart = (e) => {
+            const now = Date.now();
+            if (now - lastTap < 300) {
+                // double-tap
+                localContainer.classList.toggle('local-expanded');
+                // ensure minimized is removed
+                localContainer.classList.remove('local-minimized');
+            }
+            lastTap = now;
+
+            // start long-press timer (600ms)
+            longPressTimer = setTimeout(() => {
+                localContainer.classList.add('local-minimized');
+                localContainer.classList.remove('local-expanded');
+            }, 600);
+        };
+
+        const onTapEnd = (e) => {
+            if (longPressTimer) clearTimeout(longPressTimer);
+        };
+
+        localContainer.addEventListener('pointerdown', onTapStart);
+        localContainer.addEventListener('pointerup', onTapEnd);
+        localContainer.addEventListener('pointercancel', onTapEnd);
+    }
 }
 
 // --- WEBRTC & SOCKET.IO EVENT HANDLING --- (No changes below this line, but included for completeness)
 
 socket.on('user-connected', (userId) => {
     console.log(`New user connected: ${userId}`);
-    participantCount++;
-    updateParticipantCount();
-    callUser(userId);
+    // Avoid double counting if server echoes our own clientId or reconnection flows
+    if (userId === CLIENT_ID) return;
+    // Only increment when we don't already have their peer connection
+    if (!peers[userId]) {
+        participantCount++;
+        updateParticipantCount();
+        callUser(userId);
+    }
 });
 
 socket.on('offer', async (payload) => {

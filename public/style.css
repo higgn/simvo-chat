@@ -1097,11 +1097,12 @@ button, input, select, textarea {
         height: 150px;
     }
     
-    /* Mobile Video Grid */
+    /* Mobile Video Grid: stack peers vertically */
     #video-grid {
         grid-template-columns: 1fr;
         gap: var(--spacing-sm);
         padding: var(--spacing-sm);
+        align-items: start;
     }
     
     #video-grid:has(.video-container:nth-child(2):last-child) {
@@ -1123,12 +1124,44 @@ button, input, select, textarea {
         min-height: 180px;
     }
     
-    /* Mobile Local Video */
+    /* Mobile Local Video - prefer 16:9 thumbnail and non-overlapping controls */
     #local-video-container {
-        bottom: 80px;
+        bottom: calc(64px + env(safe-area-inset-bottom, 12px));
         right: var(--spacing-sm);
-        width: 100px;
-        height: 75px;
+        width: clamp(120px, 28vw, 160px);
+        aspect-ratio: 16 / 9;
+        height: auto;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    /* When user expands local preview (double-tap) */
+    #local-video-container.local-expanded {
+        position: fixed !important;
+        left: 50% !important;
+        top: 10% !important;
+        transform: translateX(-50%) !important;
+        width: min(92vw, 1000px) !important;
+        aspect-ratio: 16 / 9 !important;
+        height: auto !important;
+        z-index: 999 !important;
+        border-radius: 14px !important;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important;
+    }
+
+    /* Minimized small preview (long-press) */
+    #local-video-container.local-minimized {
+        width: 72px !important;
+        height: 54px !important;
+        aspect-ratio: auto !important;
+        bottom: calc(56px + env(safe-area-inset-bottom, 8px)) !important;
+    }
+
+    /* Ensure peer containers are full width on phones */
+    .video-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-height: 220px !important;
     }
     
     /* Mobile Controls */
@@ -1387,9 +1420,8 @@ html, body, .view, .view.active, #room, #video-grid {
     }
 
     #local-video-container {
-        width: 72px !important;
-        height: 54px !important;
-        bottom: calc(56px + env(safe-area-inset-bottom, 8px)) !important;
+        width: 30% !important;
+        bottom: calc(110px + env(safe-area-inset-bottom, 8px)) !important;
         right: 10px !important;
     }
 
