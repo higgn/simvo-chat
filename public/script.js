@@ -8,9 +8,14 @@ let isScreenSharing = false;
 let isNoiseSuppressionEnabled = true;
 let peers = {};
 let videoDevices = [];
+let audioDevices = [];
 let currentVideoDeviceIndex = 0;
+let currentAudioDeviceIndex = 0;
 let participantCount = 1;
 let connectionStatus = 'connected';
+let isFullscreen = false;
+let recordingState = false;
+let networkQuality = 'good';
 
 // --- INITIALIZATION ---
 const ROOM_ID = window.location.pathname.substring(1);
@@ -111,12 +116,59 @@ async function getVideoDevices() {
     try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         videoDevices = devices.filter(device => device.kind === 'videoinput');
+        audioDevices = devices.filter(device => device.kind === 'audioinput');
+        
         const flipCameraBtn = document.getElementById('flip-camera-btn');
         if (videoDevices.length > 1) {
             flipCameraBtn.style.display = 'flex';
         }
     } catch (error) {
         console.error('Error enumerating devices:', error);
+    }
+}
+
+// Network Quality Monitoring
+function monitorNetworkQuality() {
+    for (const peerId in peers) {
+        const peerConnection = peers[peerId];
+        if (peerConnection) {
+            peerConnection.getStats().then(stats => {
+                let rtt = 0;
+                let packetsLost = 0;
+                let packetsReceived = 0;
+                
+                stats.forEach(report => {
+                    if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                        rtt = report.currentRoundTripTime * 1000; // Convert to ms
+                    }
+                    if (report.type === 'inbound-rtp' && report.mediaType === 'video') {
+                        packetsLost = report.packetsLost || 0;
+                        packetsReceived = report.packetsReceived || 0;
+                    }
+                });
+                
+                const lossRate = packetsReceived > 0 ? (packetsLost / packetsReceived) * 100 : 0;
+                
+                // Determine quality
+                if (rtt < 100 && lossRate < 1) {
+                    networkQuality = 'good';
+                } else if (rtt < 300 && lossRate < 3) {
+                    networkQuality = 'fair';
+                } else {
+                    networkQuality = 'poor';
+                }
+                
+                updateSignalQuality(networkQuality);
+            }).catch(err => console.warn('Stats error:', err));
+        }
+    }
+}
+
+function updateSignalQuality(quality) {
+    const signalEl = document.getElementById('signal-quality');
+    if (signalEl) {
+        signalEl.classList.remove('good', 'fair', 'poor');
+        signalEl.classList.add(quality);
     }
 }
 
@@ -203,6 +255,77 @@ function applyVideoFilter(filter) {
     document.querySelectorAll('#video-grid video').forEach(v => {
         v.style.filter = filter;
     });
+}
+
+// Fullscreen functionality
+function toggleFullscreen() {
+    const roomElement = document.getElementById('room');
+    
+    if (!isFullscreen) {
+        if (roomElement.requestFullscreen) {
+            roomElement.requestFullscreen();
+        } else if (roomElement.webkitRequestFullscreen) {
+            roomElement.webkitRequestFullscreen();
+        } else if (roomElement.msRequestFullscreen) {
+            roomElement.msRequestFullscreen();
+        }
+        document.body.classList.add('fullscreen-active');
+        isFullscreen = true;
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        }
+        document.body.classList.remove('fullscreen-active');
+        isFullscreen = false;
+    }
+}
+
+// Listen for fullscreen changes
+document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement) {
+        document.body.classList.remove('fullscreen-active');
+        isFullscreen = false;
+    }
+});
+
+// Copy room URL to clipboard
+function copyRoomURL() {
+    const roomURL = window.location.href;
+    navigator.clipboard.writeText(roomURL).then(() => {
+        // Show temporary notification
+        showNotification('Room link copied to clipboard!');
+    }).catch(err => {
+        console.error('Failed to copy: ', err);
+    });
+}
+
+function showNotification(message) {
+    const notification = document.createElement('div');
+    notification.className = 'notification';
+    notification.textContent = message;
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: var(--surface-elevated);
+        color: var(--foreground);
+        padding: 12px 20px;
+        border-radius: 8px;
+        border: 1px solid var(--border-subtle);
+        z-index: 1000;
+        animation: slideIn 0.3s ease;
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease forwards';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
 }
 
 // --- UTILITY FUNCTIONS ---
@@ -318,6 +441,8 @@ function initializeControls() {
     const closeModalBtn = document.querySelector('.close-button');
     const noiseSuppressionToggle = document.getElementById('noise-suppression-toggle');
     const videoFilterSelect = document.getElementById('video-filter-select');
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    const copyLinkBtn = document.getElementById('copy-link-btn');
 
     // Microphone control with icon states
     if (micBtn) micBtn.addEventListener('click', () => {
@@ -339,6 +464,8 @@ function initializeControls() {
     if (endCallBtn) endCallBtn.addEventListener('click', () => { window.location.href = '/'; });
     if (screenShareBtn) screenShareBtn.addEventListener('click', toggleScreenShare);
     if (flipCameraBtn) flipCameraBtn.addEventListener('click', flipCamera);
+    if (fullscreenBtn) fullscreenBtn.addEventListener('click', toggleFullscreen);
+    if (copyLinkBtn) copyLinkBtn.addEventListener('click', copyRoomURL);
     
     // Chat controls
     if (chatToggleBtn) chatToggleBtn.addEventListener('click', toggleChat);
@@ -435,17 +562,13 @@ function initializeControls() {
         }
     }
 
-    // Simple signal quality updater (hook for real metrics later)
+    // Real-time network quality monitoring
     const signalEl = document.getElementById('signal-quality');
     if (signalEl) {
-        const states = ['good', 'fair', 'poor'];
-        let idx = 0;
-        setInterval(() => {
-            // rotate for demo; real app should set based on network stats
-            signalEl.classList.remove('good','fair','poor');
-            signalEl.classList.add(states[idx]);
-            idx = (idx + 1) % states.length;
-        }, 4000);
+        // Start monitoring network quality every 5 seconds
+        setInterval(monitorNetworkQuality, 5000);
+        // Initialize with good quality
+        updateSignalQuality('good');
     }
 
     // Gestures: double-tap to expand, long-press to minimize (touch-friendly)

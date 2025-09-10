@@ -18,9 +18,7 @@
         </div>
         
         <nav class="top-nav">
-            <div class="logo-section">
-                <div class="logo">Simvo</div>
-            </div>
+            <div class="logo">Simvo</div>
             <div class="nav-status">
                 <div class="status-indicator">
                     <div class="status-dot"></div>
@@ -29,70 +27,84 @@
             </div>
         </nav>
         
-        <main class="hero-section">
-            <div class="hero-content">
-                <h1 class="hero-title">
-                    <span class="title-primary">Premium Video</span>
-                    <span class="title-accent">Conferencing</span>
-                </h1>
-                
-                <p class="hero-description">
-                    Crystal-clear quality. Complete privacy. Zero complexity.
-                    <br>Connect instantly, anywhere.
-                </p>
-                
-                <div class="cta-section">
-                    <button id="start-btn" class="start-button primary">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M17,10.5V7A1,1 0 0,0 16,6H4A1,1 0 0,0 3,7V17A1,1 0 0,0 4,18H16A1,1 0 0,0 17,17V13.5L21,17.5V6.5L17,10.5Z"/>
-                        </svg>
-                        Start Meeting
-                    </button>
+        <div class="main-container">
+            <main class="hero-section">
+                <div class="hero-content">
+                    <h1 class="hero-title">Video Calls</h1>
+
+                    <p class="hero-description">
+                        Meet face-to-face. Fast and private.
+                    </p>
                     
-                    <button class="start-button secondary" onclick="joinRoom()">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,12 0 0,0 12,2M11,16.5L6.5,12L7.91,10.59L11,13.67L16.59,8.09L18,9.5L11,16.5Z"/>
-                        </svg>
-                        Join Room
-                    </button>
-                </div>
-                
-                <div class="features-grid">
-                    <div class="feature-item">
-                        <div class="feature-icon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M12 1L3 5V11C3 16.55 6.84 21.74 12 23C17.16 21.74 21 16.55 21 11V5L12 1Z"/>
-                            </svg>
-                        </div>
-                        <span>Encrypted</span>
-                    </div>
-                    <div class="feature-item">
-                        <div class="feature-icon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z"/>
-                            </svg>
-                        </div>
-                        <span>No Downloads</span>
-                    </div>
-                    <div class="feature-item">
-                        <div class="feature-icon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <div class="cta-section">
+                        <button id="start-btn" class="start-button primary">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M17,10.5V7A1,1 0 0,0 16,6H4A1,1 0 0,0 3,7V17A1,1 0 0,0 4,18H16A1,1 0 0,0 17,17V13.5L21,17.5V6.5L17,10.5Z"/>
                             </svg>
-                        </div>
-                        <span>HD Quality</span>
-                    </div>
-                    <div class="feature-item">
-                        <div class="feature-icon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M13,9H18.5L13,3.5V9M6,2H14L20,8V20A2,2 0 0,1 18,22H6C4.89,22 4,21.1 4,20V4C4,2.89 4.89,2 6,2M15,18V16H6V18H15M18,14V12H6V14H18Z"/>
+                            Start Meeting
+                        </button>
+                        
+                        <button class="start-button secondary" onclick="joinRoom()">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,12 0 0,0 12,2M11,16.5L6.5,12L7.91,10.59L11,13.67L16.59,8.09L18,9.5L11,16.5Z"/>
                             </svg>
+                            Join Room
+                        </button>
+                    </div>
+                    
+                    <div class="features-grid">
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M9 12l2 2 4-4"/>
+                                    <path d="M21 12c-1 0-3-1-3-3s2-3 3-3 3 1 3 3-2 3-3 3"/>
+                                    <path d="M3 12c1 0 3-1 3-3s-2-3-3-3-3 1-3 3 2 3 3 3"/>
+                                    <path d="M12 3c0 1-1 3-3 3s-3-2-3-3 1-3 3-3 3 2 3 3"/>
+                                    <path d="M12 21c0-1 1-3 3-3s3 2 3 3-1 3-3 3-3-2-3-3"/>
+                                </svg>
+                            </div>
+                            <span>Encrypted</span>
                         </div>
-                        <span>Instant Connect</span>
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+                                    <path d="M12 12l-8-4"/>
+                                    <path d="M12 12l8-4"/>
+                                    <path d="M12 12v9"/>
+                                </svg>
+                            </div>
+                            <span>No Downloads</span>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <polygon points="23 7 16 12 23 17 23 7"/>
+                                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                                </svg>
+                            </div>
+                            <span>HD Quality</span>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                                </svg>
+                            </div>
+                            <span>Instant Connect</span>
+                        </div>
                     </div>
                 </div>
-            </div>
-        </main>
+            </main>
+            
+            <aside class="demo-section">
+                <div class="demo-container">
+                    <div class="demo-placeholder">
+                        <img src="https://cdn.dribbble.com/userupload/27435546/file/original-d6d21e1c4966b81b9f3f98dadaa1c906.gif">
+                    </div>
+                </div>
+            </aside>
+        </div>
     </div>
 
     <!-- Video Chat Room View -->
@@ -152,6 +164,14 @@
             <button id="flip-camera-btn" class="control-btn" title="Flip camera">
                 <!-- Flip Camera -->
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"></path><path d="M3 11v-1a4 4 0 0 1 4-4h14"></path><path d="M7 22l-4-4 4-4"></path><path d="M21 13v1a4 4 0 0 1-4 4H3"></path></svg>
+            </button>
+            <button id="fullscreen-btn" class="control-btn" title="Toggle fullscreen">
+                <!-- Fullscreen -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 1 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+            </button>
+            <button id="copy-link-btn" class="control-btn" title="Copy room link">
+                <!-- Copy Link -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
             </button>
             <button id="settings-btn" class="control-btn" title="Settings">
                 <!-- Settings -->
