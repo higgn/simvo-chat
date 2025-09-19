@@ -34,52 +34,63 @@ app.get('/:roomId', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-
 io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
+    // Store the room ID on the socket instance for later use
+    let currentRoomId = null;
+
     socket.on('join-room', (roomId) => {
+        currentRoomId = roomId; // Store the room ID
         socket.join(roomId);
         console.log(`User ${socket.id} joined room ${roomId}`);
         
+        // Announce the new user to others in the room
         socket.to(roomId).emit('user-connected', socket.id);
+    });
 
-        socket.on('offer', (payload) => {
-            io.to(payload.target).emit('offer', {
-                signal: payload.signal,
-                caller: payload.caller
-            });
-        });
+    // --- These handlers are now correctly placed in the top-level connection scope ---
 
-        socket.on('answer', (payload) => {
-            io.to(payload.target).emit('answer', {
-                signal: payload.signal,
-                caller: socket.id
-            });
-        });
-
-        socket.on('ice-candidate', (incoming) => {
-            io.to(incoming.target).emit('ice-candidate', {
-                candidate: incoming.candidate,
-                sender: socket.id
-            });
-        });
-
-        socket.on('disconnect', () => {
-            console.log(`User disconnected: ${socket.id}`);
-            // Note: To properly notify the room, the roomId needs to be accessible here.
-            // A more robust implementation would store the user's room. For now, this is fine.
-            // A simple fix would be to iterate over the rooms the socket was in.
-            const rooms = Object.keys(socket.rooms);
-            rooms.forEach(room => {
-                if(room !== socket.id) {
-                     socket.to(room).emit('user-disconnected', socket.id);
-                }
-            })
+    socket.on('offer', (payload) => {
+        io.to(payload.target).emit('offer', {
+            signal: payload.signal,
+            caller: socket.id // The caller is the person sending the offer
         });
     });
-});
 
+    socket.on('answer', (payload) => {
+        io.to(payload.target).emit('answer', {
+            signal: payload.signal,
+            caller: socket.id // The caller is the person sending the answer
+        });
+    });
+
+    socket.on('ice-candidate', (incoming) => {
+        // Forward the ICE candidate to the target peer
+        io.to(incoming.target).emit('ice-candidate', {
+            candidate: incoming.candidate,
+            sender: socket.id
+        });
+    });
+    
+    // Chat message handler (based on your client-side code)
+    socket.on('chat-message', (data) => {
+        if (data.roomId) {
+            socket.to(data.roomId).emit('chat-message', {
+                message: data.message,
+                senderId: socket.id
+            });
+        }
+    });
+
+    socket.on('disconnect', () => {
+        console.log(`User disconnected: ${socket.id}`);
+        // Use the stored room ID to notify the correct room
+        if (currentRoomId) {
+            socket.to(currentRoomId).emit('user-disconnected', socket.id);
+        }
+    });
+});
 server.listen(PORT, () => {
     console.log(`Simvo Chat server running on port ${PORT}`);
 });

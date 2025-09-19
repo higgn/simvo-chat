@@ -19,6 +19,8 @@ let networkQuality = 'good';
 
 // --- INITIALIZATION ---
 const ROOM_ID = window.location.pathname.substring(1);
+/* const socket = io();
+ */
 const socket = io('https://simvo-chat-server.onrender.com'); 
 
 // Persistent client id so refresh doesn't create a new logical identity client-side
