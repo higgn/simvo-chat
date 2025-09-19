@@ -7,6 +7,9 @@ let isVideoOn = true;
 let isScreenSharing = false;
 let isNoiseSuppressionEnabled = true;
 let peers = {};
+let dataChannels = {};
+let fileReceivers = {};
+let transfers = {}; // active transfers: { transferId: { file, aborted, perPeer: { [peerId]: bytesSent } } }
 let videoDevices = [];
 let audioDevices = [];
 let currentVideoDeviceIndex = 0;
@@ -402,14 +405,103 @@ function addMessageToChat(messageData) {
     const chatMessages = document.getElementById('chat-messages');
     const messageElement = document.createElement('div');
     messageElement.className = `message ${messageData.sender}`;
-    
-    messageElement.innerHTML = `
-        <div>${messageData.text}</div>
-        <div class="message-time">${messageData.timestamp}</div>
-    `;
-    
+
+    // If this is a file message, show file UI with progress
+    if (messageData.file) {
+        const file = messageData.file;
+        messageElement.innerHTML = `
+            <div class="file-attach">
+                <div class="file-progress" data-transfer-id="${messageData.transferId}">
+                    <svg viewBox="0 0 36 36" width="36" height="36">
+                        <path class="progress-bg" d="M18 2.0845a15.9155 15.9155 0 1 0 0 31.831" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="3"></path>
+                        <path class="progress-bar" d="M18 2.0845a15.9155 15.9155 0 1 0 0 31.831" fill="none" stroke="var(--primary)" stroke-width="3" stroke-dasharray="0 100" stroke-linecap="round"></path>
+                    </svg>
+                    <div class="progress-text">0%</div>
+                </div>
+                <div class="file-meta">
+                    <div class="file-name">${escapeHtml(file.name)}</div>
+                    <div class="file-size">${formatBytes(file.size)}</div>
+                </div>
+            </div>
+            <div class="message-time">${messageData.timestamp}</div>
+        `;
+    } else {
+        messageElement.innerHTML = `
+            <div>${escapeHtml(messageData.text || '')}</div>
+            <div class="message-time">${messageData.timestamp}</div>
+        `;
+    }
+
     chatMessages.appendChild(messageElement);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    // If outgoing file message, add cancel control
+    if (messageData.file && messageData.sender === 'own') {
+        const meta = messageElement.querySelector('.file-meta');
+        if (meta) {
+            const btn = document.createElement('button');
+            btn.className = 'file-cancel-btn';
+            btn.textContent = 'Cancel';
+            btn.addEventListener('click', () => {
+                if (messageData.transferId) cancelTransfer(messageData.transferId);
+            });
+            meta.appendChild(btn);
+            // Add per-peer list for progress
+            const perPeer = document.createElement('div');
+            perPeer.className = 'per-peer-list';
+            perPeer.setAttribute('data-transfer-id', messageData.transferId);
+            // populate with current peers (use short id)
+            for (const peerId in peers) {
+                const item = document.createElement('div');
+                item.className = 'peer-item';
+                item.setAttribute('data-peer-id', peerId);
+                const short = document.createElement('span'); short.className = 'peer-name'; short.textContent = peerId.slice(0,6);
+                const prog = document.createElement('span'); prog.className = 'peer-progress'; prog.textContent = '0%';
+                item.appendChild(short); item.appendChild(prog);
+                perPeer.appendChild(item);
+            }
+            meta.appendChild(perPeer);
+        }
+    }
+}
+
+// Update an individual peer's progress UI
+function updatePerPeerProgress(transferId, peerId, fraction) {
+    const list = document.querySelector(`.per-peer-list[data-transfer-id="${transferId}"]`);
+    if (!list) return;
+    const item = list.querySelector(`.peer-item[data-peer-id="${peerId}"]`);
+    if (!item) return;
+    const pct = Math.round(fraction * 100);
+    const prog = item.querySelector('.peer-progress');
+    if (prog) prog.textContent = `${pct}%`;
+}
+
+// Helper: escape HTML to prevent injection in chat messages
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"})[c]);
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B','KB','MB','GB','TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Update progress UI for a given transferId (0-1 progress)
+function updateChatProgress(transferId, fraction) {
+    const el = document.querySelector(`.file-progress[data-transfer-id="${transferId}"]`);
+    if (!el) return;
+    const pct = Math.round(fraction * 100);
+    const path = el.querySelector('.progress-bar');
+    const text = el.querySelector('.progress-text');
+    if (path) {
+        const dash = Math.max(0, Math.min(100, pct));
+        path.setAttribute('stroke-dasharray', `${dash} 100`);
+    }
+    if (text) text.textContent = `${pct}%`;
 }
 
 function adjustTextareaHeight(textarea) {
@@ -507,6 +599,19 @@ function initializeControls() {
 
     if (noiseSuppressionToggle) noiseSuppressionToggle.addEventListener('change', (e) => toggleNoiseSuppression(e.target.checked));
     if (videoFilterSelect) videoFilterSelect.addEventListener('change', (e) => applyVideoFilter(e.target.value));
+
+    // PiP and file transfer UI wiring
+    const pipBtn = document.getElementById('pip-btn');
+    const fileInput = document.getElementById('file-input');
+    const sendFileBtn = document.getElementById('send-file-btn');
+    if (pipBtn) pipBtn.addEventListener('click', togglePictureInPicture);
+    if (sendFileBtn && fileInput) {
+        sendFileBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) sendFileToPeers(file);
+        });
+    }
 
     // Controls collapse / expand
     const controlsToggle = document.getElementById('controls-toggle-btn');
@@ -765,6 +870,15 @@ const createPeerConnection = (userId) => {
     addRemoteStream(userId, event.streams[0]);
     };
 
+    // Handle inbound data channels (file transfer / messages)
+    peerConnection.ondatachannel = (event) => {
+        try {
+            setupDataChannel(event.channel, userId);
+        } catch (e) {
+            console.warn('ondatachannel handler error', e);
+        }
+    };
+
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
             socket.emit('ice-candidate', { target: userId, candidate: event.candidate });
@@ -776,11 +890,326 @@ const createPeerConnection = (userId) => {
 
 const callUser = async (userId) => {
     const peerConnection = createPeerConnection(userId);
+
+    // Create a reliable data channel for file transfer / messages
+    try {
+        const dc = peerConnection.createDataChannel('simvo-data');
+        setupDataChannel(dc, userId);
+    } catch (e) {
+        console.warn('Failed to create data channel', e);
+    }
+
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
 
     socket.emit('offer', { target: userId, signal: offer, caller: socket.id });
 };
+
+// Setup handlers for an RTCDataChannel
+function setupDataChannel(channel, userId) {
+    dataChannels[userId] = channel;
+
+    channel.onopen = () => {
+        console.log('Data channel open for', userId);
+    };
+
+    channel.onmessage = async (event) => {
+        // String messages are control/meta; binary are file chunks
+        if (typeof event.data === 'string') {
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'file-meta') {
+                    const transferId = msg.transferId || `${userId}-${Date.now()}`;
+                    fileReceivers[userId] = { meta: msg, buffers: [], received: 0, transferId };
+                    // Render incoming file message in chat
+                    addMessageToChat({ file: { name: msg.name, size: msg.size }, timestamp: new Date().toLocaleTimeString(), sender: 'other', transferId });
+                    showNotification(`Incoming file: ${msg.name} from ${userId}`);
+                } else if (msg.type === 'file-end') {
+                    // assemble
+                    const receiver = fileReceivers[userId];
+                    if (receiver) {
+                        const blob = new Blob(receiver.buffers);
+                        const url = URL.createObjectURL(blob);
+                        // replace progress UI with download link
+                        const sel = `.file-progress[data-transfer-id="${receiver.transferId}"]`;
+                        const progEl = document.querySelector(sel);
+                        if (progEl) {
+                            const metaEl = progEl.parentElement.querySelector('.file-meta');
+                            // Thumbnail for images
+                            if (receiver.meta && receiver.meta.type && receiver.meta.type.startsWith('image/')) {
+                                const img = document.createElement('img');
+                                img.className = 'file-thumbnail';
+                                img.src = url;
+                                metaEl.insertBefore(img, metaEl.firstChild);
+                            }
+
+                            const actions = document.createElement('div'); actions.className = 'file-actions';
+                            const openBtn = document.createElement('button'); openBtn.className = 'file-action-btn primary'; openBtn.textContent = 'Open';
+                            openBtn.addEventListener('click', () => { window.open(url, '_blank'); });
+                            const saveBtn = document.createElement('a'); saveBtn.className = 'file-action-btn'; saveBtn.textContent = 'Save'; saveBtn.href = url; saveBtn.download = receiver.meta.name || 'download';
+                            const removeBtn = document.createElement('button'); removeBtn.className = 'file-action-btn'; removeBtn.textContent = 'Remove';
+                            removeBtn.addEventListener('click', () => {
+                                try { URL.revokeObjectURL(url); } catch(e){}
+                                const parent = metaEl.parentElement;
+                                parent && parent.remove();
+                            });
+                            actions.appendChild(openBtn); actions.appendChild(saveBtn); actions.appendChild(removeBtn);
+                            metaEl.appendChild(actions);
+                            progEl.remove();
+                        }
+                        showNotification(`File received: ${receiver.meta.name}`);
+                        // Verify checksum if provided
+                        if (receiver.meta && receiver.meta.checksum) {
+                            try {
+                                const ab = await blob.arrayBuffer();
+                                const digest = await crypto.subtle.digest('SHA-256', ab);
+                                const hashArray = Array.from(new Uint8Array(digest));
+                                const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                                if (hashHex !== receiver.meta.checksum) {
+                                    showNotification('Checksum mismatch for received file');
+                                    const note = document.createElement('div'); note.textContent = 'Checksum mismatch';
+                                    const metaEl = document.querySelector(sel)?.parentElement.querySelector('.file-meta');
+                                    if (metaEl) metaEl.appendChild(note);
+                                            try { channel.send(JSON.stringify({ type: 'file-checksum-mismatch', transferId: receiver.transferId })); } catch(e){}
+                                } else {
+                                    const note = document.createElement('div'); note.textContent = 'Verified ✓';
+                                    const metaEl = document.querySelector(sel)?.parentElement.querySelector('.file-meta');
+                                    if (metaEl) metaEl.appendChild(note);
+                                }
+                            } catch (e) {
+                                console.warn('Checksum verify failed', e);
+                            }
+                        }
+                        delete fileReceivers[userId];
+                    }
+                } else if (msg.type === 'file-cancel') {
+                    // sender canceled
+                    const receiver = fileReceivers[userId];
+                    if (receiver) {
+                        const sel = `.file-progress[data-transfer-id="${receiver.transferId}"]`;
+                        const progEl = document.querySelector(sel);
+                        if (progEl) {
+                            const cancelNote = document.createElement('div'); cancelNote.textContent = 'Canceled';
+                            progEl.parentElement.querySelector('.file-meta').appendChild(cancelNote);
+                            progEl.remove();
+                        }
+                        delete fileReceivers[userId];
+                    }
+                    showNotification('Transfer canceled');
+                } else if (msg.type === 'file-checksum-mismatch') {
+                    showNotification('Warning: file checksum mismatch reported by sender');
+                }
+            } catch (e) {
+                console.warn('Failed to parse data message', e);
+            }
+        } else {
+            // binary chunk
+            const receiver = fileReceivers[userId];
+            if (receiver) {
+                receiver.buffers.push(event.data);
+                const chunkSize = event.data.byteLength || event.data.size || 0;
+                receiver.received += chunkSize;
+                // update chat UI progress
+                if (receiver.meta && receiver.meta.size) {
+                    const frac = Math.min(1, receiver.received / receiver.meta.size);
+                    updateChatProgress(receiver.transferId, frac);
+                }
+            }
+        }
+    };
+
+    channel.onerror = (e) => console.warn('DataChannel error', e);
+    channel.onclose = () => console.log('Data channel closed', userId);
+}
+
+// Wait for RTCDataChannel bufferedAmount to drop below threshold (bytes)
+function waitForBufferedAmount(dc, threshold = 65536) {
+    return new Promise((resolve) => {
+        if (!dc || dc.bufferedAmount < threshold) return resolve();
+        const onLow = () => {
+            if (dc.bufferedAmount < threshold) {
+                try { dc.removeEventListener('bufferedamountlow', onLow); } catch(e){}
+                resolve();
+            }
+        };
+        try { dc.addEventListener('bufferedamountlow', onLow); } catch(e){}
+        const iv = setInterval(() => {
+            if (dc.bufferedAmount < threshold) {
+                clearInterval(iv);
+                try { dc.removeEventListener('bufferedamountlow', onLow); } catch(e){}
+                resolve();
+            }
+        }, 50);
+    });
+}
+
+function cancelTransfer(transferId) {
+    const t = transfers[transferId];
+    if (!t) return;
+    t.aborted = true;
+    // Notify peers
+    for (const peerId in dataChannels) {
+        const dc = dataChannels[peerId];
+        if (dc && dc.readyState === 'open') {
+            try { dc.send(JSON.stringify({ type: 'file-cancel', transferId })); } catch (e) {}
+        }
+    }
+    // Update UI
+    const sel = `.file-progress[data-transfer-id="${transferId}"]`;
+    const progEl = document.querySelector(sel);
+    if (progEl) {
+        const note = document.createElement('div'); note.textContent = 'Canceled';
+        const meta = progEl.parentElement.querySelector('.file-meta');
+        if (meta) meta.appendChild(note);
+        progEl.remove();
+    }
+    showNotification('Transfer canceled');
+}
+
+async function sendFileToPeers(file) {
+    if (!file) return;
+    const CHUNK_SIZE = 16384; // 16KB
+    const HIGH_WATER = 262144; // 256KB
+    const LOW_WATER = 65536; // 64KB
+
+    // generate a transfer id
+    const transferId = `tx-${Date.now()}-${Math.random().toString(36).substr(2,6)}`;
+    // register transfer
+    transfers[transferId] = { file, aborted: false, perPeer: {} };
+    // Render outgoing file message in chat
+    addMessageToChat({ file: { name: file.name, size: file.size }, timestamp: new Date().toLocaleTimeString(), sender: 'own', transferId });
+
+    // Compute checksum (SHA-256) if possible
+    let checksum = null;
+    try {
+        const abAll = await file.arrayBuffer();
+        const digest = await crypto.subtle.digest('SHA-256', abAll);
+        checksum = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {
+        console.warn('Checksum compute failed', e);
+    }
+
+    // Send meta first to all open channels (include checksum if computed)
+    for (const peerId in dataChannels) {
+        const dc = dataChannels[peerId];
+        if (dc && dc.readyState === 'open') {
+            try { dc.send(JSON.stringify({ type: 'file-meta', name: file.name, size: file.size, transferId, checksum })); } catch(e) { console.warn('meta send failed', e); }
+        }
+    }
+
+    const stream = file.stream ? file.stream() : null;
+    if (stream) {
+        // modern browsers: use stream reader
+        const reader = stream.getReader();
+        let sent = 0;
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            sent += value.byteLength || value.length || 0;
+            for (const peerId in dataChannels) {
+                const dc = dataChannels[peerId];
+                if (dc && dc.readyState === 'open') {
+                    try {
+                        if (transfers[transferId] && transfers[transferId].aborted) break;
+                        dc.send(value);
+                            const bytesSent = (transfers[transferId].perPeer[peerId] || 0) + (value.byteLength || value.length || 0);
+                            transfers[transferId].perPeer[peerId] = bytesSent;
+                            updatePerPeerProgress(transferId, peerId, bytesSent / file.size);
+                        if (dc.bufferedAmount > HIGH_WATER) await waitForBufferedAmount(dc, LOW_WATER);
+                    } catch (e) { console.warn('DC send chunk failed', e); }
+                }
+            }
+            const frac = Math.min(1, sent / file.size);
+            updateChatProgress(transferId, frac);
+            if (transfers[transferId] && transfers[transferId].aborted) break;
+        }
+    } else {
+        // Fallback: use FileReader chunks
+        let offset = 0;
+        let sent = 0;
+        while (offset < file.size) {
+            const slice = file.slice(offset, offset + CHUNK_SIZE);
+            const arrayBuffer = await slice.arrayBuffer();
+            for (const peerId in dataChannels) {
+                const dc = dataChannels[peerId];
+                if (dc && dc.readyState === 'open') {
+                    try {
+                        if (transfers[transferId] && transfers[transferId].aborted) break;
+                        dc.send(arrayBuffer);
+                            const bytesSent = (transfers[transferId].perPeer[peerId] || 0) + (arrayBuffer.byteLength || arrayBuffer.length || 0);
+                            transfers[transferId].perPeer[peerId] = bytesSent;
+                            updatePerPeerProgress(transferId, peerId, bytesSent / file.size);
+                        if (dc.bufferedAmount > HIGH_WATER) await waitForBufferedAmount(dc, LOW_WATER);
+                    } catch (e) { console.warn('DC send chunk failed', e); }
+                }
+            }
+            offset += CHUNK_SIZE;
+            sent += arrayBuffer.byteLength || arrayBuffer.length || 0;
+            const frac = Math.min(1, sent / file.size);
+            updateChatProgress(transferId, frac);
+            if (transfers[transferId] && transfers[transferId].aborted) break;
+        }
+    }
+
+    // If aborted, notify and cleanup
+    if (transfers[transferId] && transfers[transferId].aborted) {
+        for (const peerId in dataChannels) {
+            const dc = dataChannels[peerId];
+            if (dc && dc.readyState === 'open') {
+                try { dc.send(JSON.stringify({ type: 'file-cancel', transferId })); } catch(e){}
+            }
+        }
+        showNotification(`File transfer canceled: ${file.name}`);
+        delete transfers[transferId];
+        return;
+    }
+
+    // notify peers that file is complete
+    for (const peerId in dataChannels) {
+        const dc = dataChannels[peerId];
+        if (dc && dc.readyState === 'open') {
+            try { dc.send(JSON.stringify({ type: 'file-end', transferId })); } catch(e) { console.warn('end notify failed', e); }
+        }
+    }
+
+    showNotification(`File sent: ${file.name}`);
+    delete transfers[transferId];
+}
+
+// Focused video for PiP / UI actions
+let focusedVideoElement = null;
+function setFocusedVideo(el) {
+    focusedVideoElement = el;
+}
+
+async function togglePictureInPicture() {
+    const video = focusedVideoElement || document.getElementById('local-video');
+    if (!video) return;
+
+    try {
+        if (document.pictureInPictureElement) {
+            await document.exitPictureInPicture();
+        } else {
+            if (video.requestPictureInPicture) {
+                await video.requestPictureInPicture();
+            } else {
+                showNotification('Picture-in-Picture not supported in this browser');
+            }
+        }
+    } catch (e) {
+        console.warn('PiP toggle failed', e);
+    }
+}
+
+function toggleElementFullscreen(el) {
+    if (!el) return;
+    const container = el.closest('.video-container') || el;
+    if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+    } else {
+        if (container.requestFullscreen) container.requestFullscreen();
+    }
+}
 
 const addRemoteStream = (userId, stream) => {
     if (document.getElementById(userId)) return;
@@ -807,6 +1236,10 @@ const addRemoteStream = (userId, stream) => {
     videoContainer.appendChild(remoteVideo);
     videoContainer.appendChild(nameTag);
     videoGrid.appendChild(videoContainer);
+
+    // Allow double-click to fullscreen the specific peer video and single click to focus for PiP
+    remoteVideo.addEventListener('dblclick', () => toggleElementFullscreen(remoteVideo));
+    remoteVideo.addEventListener('click', () => setFocusedVideo(remoteVideo));
 };
 
 // --- RUN ---

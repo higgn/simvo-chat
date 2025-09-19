@@ -631,24 +631,26 @@ video#local-video {
 
 
 /* Controls */
+/* Controls container: fixed-size, stable layout to avoid jitter */
 #controls {
     position: absolute;
-    bottom: 0;
+    bottom: 18px;
     left: 50%;
     transform: translateX(-50%);
-    padding: var(--spacing-lg);
+    padding: 10px 12px;
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: var(--spacing-sm);
-    background: rgba(0, 0, 0, 0.8);
-    backdrop-filter: blur(16px);
-    border-radius: var(--radius) var(--radius) 0 0;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(12px);
+    border-radius: 999px;
     border: 1px solid var(--border-subtle);
-    border-bottom: none;
     opacity: 1;
-    transition: all var(--transition-normal);
-    min-width: 320px;
+    transition: opacity var(--transition-fast), transform var(--transition-fast);
+    min-width: 420px;
+    max-width: 900px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.6);
 }
 
 body.fullscreen-active #controls,
@@ -670,12 +672,14 @@ body.fullscreen-active:hover #local-video-container {
     color: var(--foreground);
     width: 48px;
     height: 48px;
+    min-width: 48px;
+    min-height: 48px;
     border-radius: 50%;
     cursor: pointer;
     display: flex;
     justify-content: center;
     align-items: center;
-    transition: all var(--transition-fast);
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast);
     overflow: hidden;
 }
 
@@ -812,6 +816,127 @@ body.fullscreen-active:hover #local-video-container {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
+}
+
+/* File transfer UI inside chat messages */
+.message .file-attach {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.file-meta {
+    display: flex;
+    flex-direction: column;
+}
+
+.file-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.file-size {
+    font-size: 0.8rem;
+    opacity: 0.7;
+}
+
+.file-progress {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.03);
+}
+
+.file-progress svg {
+    transform: rotate(-90deg);
+}
+
+.file-progress .progress-text {
+    position: absolute;
+    font-size: 0.7rem;
+    color: var(--foreground);
+}
+
+.file-link {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+/* Cancel button for outgoing transfers */
+.file-cancel-btn {
+    margin-top: 8px;
+    padding: 6px 10px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.06);
+    color: var(--foreground);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.file-cancel-btn:hover {
+    background: rgba(255,255,255,0.03);
+    border-color: rgba(255,255,255,0.08);
+}
+
+/* Per-peer progress list (outgoing) */
+.per-peer-list {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+.peer-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: rgba(255,255,255,0.02);
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.03);
+    font-size: 0.8rem;
+}
+.peer-name {
+    font-weight: 600;
+}
+.peer-progress {
+    opacity: 0.85;
+}
+
+/* Received file preview & action buttons */
+.file-actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.file-action-btn {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: transparent;
+    color: var(--foreground);
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+.file-action-btn.primary {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+.file-thumbnail {
+    width: 72px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.04);
+    margin-right: 8px;
 }
 
 .message {
@@ -1380,6 +1505,26 @@ button, input, select, textarea {
         border-radius: var(--radius) var(--radius) 0 0;
     }
     
+    }
+    
+    /* Mobile Controls - pinned above safe area and compact */
+    #controls {
+        position: fixed !important;
+        left: env(safe-area-inset-left, 12px) !important;
+        right: env(safe-area-inset-right, 12px) !important;
+        bottom: calc(env(safe-area-inset-bottom, 12px) + 8px) !important;
+        transform: none !important;
+        width: auto !important;
+        min-width: unset !important;
+        border-radius: 999px !important;
+        padding: 8px 10px !important;
+        display: flex !important;
+        justify-content: center !important;
+        gap: 8px !important;
+        z-index: 70 !important;
+        background: rgba(18,18,18,0.95) !important;
+        border: 1px solid rgba(255,255,255,0.04) !important;
+        backdrop-filter: blur(8px) !important;
     #chat-panel.active {
         transform: translateY(0);
     }
@@ -1388,6 +1533,8 @@ button, input, select, textarea {
     .modal-content {
         width: 95%;
         margin: var(--spacing-md);
+    
+    /* Hide screen share on touch devices (most mobile browsers don't support getDisplayMedia reliably) */
         padding: var(--spacing-lg);
     }
     
