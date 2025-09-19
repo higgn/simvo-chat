@@ -19,10 +19,10 @@ let networkQuality = 'good';
 
 // --- INITIALIZATION ---
 const ROOM_ID = window.location.pathname.substring(1);
-/* const socket = io();
- */
-const socket = io('https://simvo-chat-server.onrender.com'); 
+const socket = io();
 
+/* const socket = io('https://simvo-chat-server.onrender.com'); 
+ */
 // Persistent client id so refresh doesn't create a new logical identity client-side
 let CLIENT_ID = localStorage.getItem('simvo_client_id');
 if (!CLIENT_ID) {
@@ -618,21 +618,49 @@ function initializeControls() {
 
 // --- WEBRTC & SOCKET.IO EVENT HANDLING --- (No changes below this line, but included for completeness)
 
-socket.on('user-connected', (userId) => {
-    console.log(`New user connected: ${userId}`);
-    // Avoid double counting if server echoes our own clientId or reconnection flows
-    if (userId === CLIENT_ID) return;
-    // Only increment when we don't already have their peer connection
-    if (!peers[userId]) {
-        participantCount++;
-        updateParticipantCount();
-        callUser(userId);
-    }
+// CORRECTED HANDLER #1: For when you first join a room
+socket.on('all-users', (users) => {
+    console.log('Received list of all users in room:', users);
+    users.forEach(userId => {
+        // --- START OF FIX ---
+        // Only the client with the "greater" ID will initiate the call to prevent glare.
+        if (socket.id > userId) {
+            callUser(userId);
+        }
+        // --- END OF FIX ---
+    });
 });
 
+// CORRECTED HANDLER #2: For when a new user joins after you
+socket.on('user-connected', (userId) => {
+    console.log(`New user connected: ${userId}`);
+    if (userId === socket.id) return;
+    
+    // --- START OF FIX ---
+    // The same logic applies here. The existing client with the "greater" ID calls the new one.
+    if (socket.id > userId) {
+        if (!peers[userId]) {
+            participantCount++;
+            updateParticipantCount();
+            callUser(userId);
+        }
+    }
+    // --- END OF FIX ---
+});
+
+
+/// CORRECTED HANDLER #3: Receiving an offer
 socket.on('offer', async (payload) => {
     console.log(`Received offer from ${payload.caller}`);
-    const peerConnection = createPeerConnection(payload.caller);
+    
+    // --- START OF FIX (Robustness improvement) ---
+    // Get or create the peer connection to avoid accidentally overwriting an existing one.
+    let peerConnection = peers[payload.caller];
+    if (!peerConnection) {
+        peerConnection = createPeerConnection(payload.caller);
+    }
+    // --- END OF FIX ---
+    
     await peerConnection.setRemoteDescription(new RTCSessionDescription(payload.signal));
     
     const answer = await peerConnection.createAnswer();

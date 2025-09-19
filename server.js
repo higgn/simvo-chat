@@ -37,43 +37,48 @@ app.get('/:roomId', (req, res) => {
 io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
-    // Store the room ID on the socket instance for later use
-    let currentRoomId = null;
-
-    socket.on('join-room', (roomId) => {
-        currentRoomId = roomId; // Store the room ID
-        socket.join(roomId);
-        console.log(`User ${socket.id} joined room ${roomId}`);
+    socket.on('join-room', async ({ roomId, clientId }) => {
+        // --- START OF FIX ---
+        // Get a list of all client IDs in the room *before* the new user joins.
+        const clientsInRoom = await io.in(roomId).allSockets();
+        const otherUsers = Array.from(clientsInRoom);
         
-        // Announce the new user to others in the room
-        socket.to(roomId).emit('user-connected', socket.id);
-    });
+        // Now, join the room.
+        socket.join(roomId);
+        
+        // 1. Tell the new user about everyone who is already there.
+        //    This allows the new user to initiate connections to them.
+        socket.emit('all-users', otherUsers);
 
-    // --- These handlers are now correctly placed in the top-level connection scope ---
+        // 2. Tell everyone else that a new user has joined.
+        //    This allows the existing users to initiate a connection to the new one.
+        socket.to(roomId).emit('user-connected', socket.id);
+        // --- END OF FIX ---
+
+        console.log(`User ${socket.id} (client: ${clientId}) joined room ${roomId}`);
+    });
 
     socket.on('offer', (payload) => {
         io.to(payload.target).emit('offer', {
             signal: payload.signal,
-            caller: socket.id // The caller is the person sending the offer
+            caller: payload.caller // Pass the original caller's ID
         });
     });
 
     socket.on('answer', (payload) => {
         io.to(payload.target).emit('answer', {
             signal: payload.signal,
-            caller: socket.id // The caller is the person sending the answer
+            caller: socket.id // The caller here is the one sending the answer
         });
     });
 
     socket.on('ice-candidate', (incoming) => {
-        // Forward the ICE candidate to the target peer
         io.to(incoming.target).emit('ice-candidate', {
             candidate: incoming.candidate,
             sender: socket.id
         });
     });
     
-    // Chat message handler (based on your client-side code)
     socket.on('chat-message', (data) => {
         if (data.roomId) {
             socket.to(data.roomId).emit('chat-message', {
@@ -85,10 +90,12 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         console.log(`User disconnected: ${socket.id}`);
-        // Use the stored room ID to notify the correct room
-        if (currentRoomId) {
-            socket.to(currentRoomId).emit('user-disconnected', socket.id);
-        }
+        // To properly notify the room, we need to iterate over the rooms this socket was in.
+        socket.rooms.forEach(room => {
+            if (room !== socket.id) {
+                socket.to(room).emit('user-disconnected', socket.id);
+            }
+        });
     });
 });
 server.listen(PORT, () => {
