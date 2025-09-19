@@ -634,6 +634,7 @@ function initializeControls() {
             // only start drag on primary button / touch
             if (e.button !== undefined && e.button !== 0) return;
             isDragging = true;
+            localContainer.classList.add('dragging');
             localContainer.setPointerCapture?.(e.pointerId);
             startX = e.clientX;
             startY = e.clientY;
@@ -648,15 +649,21 @@ function initializeControls() {
             const dx = e.clientX - startX;
             const dy = e.clientY - startY;
             // compute new right/bottom based on dx/dy to keep positioning anchored from bottom-right
-            const newRight = Math.max(8, (window.innerWidth - (origX + dx)));
-            const newBottom = Math.max(8, (window.innerHeight - (origY + dy)));
-            localContainer.style.right = `${newRight}px`;
+            // Bound the movement so the preview stays fully within viewport
+            const calcRight = Math.max(8, Math.min(window.innerWidth - 40, (window.innerWidth - (origX + dx))));
+            const calcBottom = Math.max(8, Math.min(window.innerHeight - 40, (window.innerHeight - (origY + dy))));
+
+            // Also keep it above controls area (approx 120px) to avoid overlap
+            const minBottom = (document.getElementById('controls')?.getBoundingClientRect().height || 120) + 20;
+            const newBottom = Math.max(calcBottom, minBottom);
+            localContainer.style.right = `${calcRight}px`;
             localContainer.style.bottom = `${newBottom}px`;
         };
 
         const onPointerUp = (e) => {
             if (!isDragging) return;
             isDragging = false;
+            localContainer.classList.remove('dragging');
             try { localContainer.releasePointerCapture?.(e.pointerId); } catch(e){}
         };
 
@@ -1089,11 +1096,31 @@ async function sendFileToPeers(file) {
         console.warn('Checksum compute failed', e);
     }
 
-    // Send meta first to all open channels (include checksum if computed)
-    for (const peerId in dataChannels) {
+    // Wait until at least one data channel is open. Retry briefly if none are open yet.
+    const waitForAnyOpenChannel = async (retries = 8, delay = 200) => {
+        for (let i = 0; i < retries; i++) {
+            const openPeers = Object.keys(dataChannels).filter(pid => dataChannels[pid] && dataChannels[pid].readyState === 'open');
+            if (openPeers.length > 0) return openPeers;
+            await new Promise(r => setTimeout(r, delay));
+        }
+        return [];
+    };
+
+    const openPeers = await waitForAnyOpenChannel();
+    if (openPeers.length === 0) {
+        showNotification('No peers available to receive file. Aborting.');
+        delete transfers[transferId];
+        return;
+    }
+
+    // Initialize perPeer counters for open peers and send meta
+    for (const peerId of openPeers) {
+        transfers[transferId].perPeer[peerId] = 0;
         const dc = dataChannels[peerId];
         if (dc && dc.readyState === 'open') {
-            try { dc.send(JSON.stringify({ type: 'file-meta', name: file.name, size: file.size, transferId, checksum })); } catch(e) { console.warn('meta send failed', e); }
+            try {
+                dc.send(JSON.stringify({ type: 'file-meta', name: file.name, size: file.size, transferId, checksum, typeMime: file.type }));
+            } catch(e) { console.warn('meta send failed', e); }
         }
     }
 
@@ -1165,10 +1192,14 @@ async function sendFileToPeers(file) {
     }
 
     // notify peers that file is complete
-    for (const peerId in dataChannels) {
+    // Before sending file-end, wait for each open channel to drain below LOW_WATER to ensure all chunks delivered
+    for (const peerId in transfers[transferId].perPeer) {
         const dc = dataChannels[peerId];
         if (dc && dc.readyState === 'open') {
-            try { dc.send(JSON.stringify({ type: 'file-end', transferId })); } catch(e) { console.warn('end notify failed', e); }
+            try {
+                await waitForBufferedAmount(dc, LOW_WATER);
+                dc.send(JSON.stringify({ type: 'file-end', transferId }));
+            } catch(e) { console.warn('end notify failed', e); }
         }
     }
 

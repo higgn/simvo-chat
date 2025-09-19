@@ -601,6 +601,13 @@ video#local-video {
     cursor: move;
 }
 
+/* Visual state while user is dragging/resizing - slightly lift the preview */
+#local-video-container.dragging {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 18px 40px rgba(0,0,0,0.55);
+    z-index: 80 !important; /* lift above peers while dragging */
+}
+
 /* Collapsed controls look (single collapsed button) */
 #controls.collapsed {
     width: 64px !important;
