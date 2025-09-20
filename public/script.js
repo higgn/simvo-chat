@@ -26,12 +26,144 @@ const ROOM_ID = window.location.pathname.substring(1);
  */
 const socket = io('https://simvo-chat-server.onrender.com'); 
 
+
 // Persistent client id so refresh doesn't create a new logical identity client-side
 let CLIENT_ID = localStorage.getItem('simvo_client_id');
 if (!CLIENT_ID) {
     CLIENT_ID = Math.random().toString(36).substring(2, 12);
     localStorage.setItem('simvo_client_id', CLIENT_ID);
 }
+
+// Enhanced session persistence
+const SESSION_STORAGE_KEY = 'simvo_session_data';
+const ROOM_SESSION_KEY = `simvo_room_${ROOM_ID}`;
+
+// Save session state
+const saveSessionState = () => {
+    const sessionData = {
+        clientId: CLIENT_ID,
+        micState: isMicOn,
+        videoState: isVideoOn,
+        noiseSuppressionState: isNoiseSuppressionEnabled,
+        currentVideoDevice: currentVideoDeviceIndex,
+        currentAudioDevice: currentAudioDeviceIndex,
+        roomId: ROOM_ID,
+        timestamp: Date.now(),
+        userAgent: navigator.userAgent.substring(0, 100), // For device consistency check
+    };
+    
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionData));
+    sessionStorage.setItem(ROOM_SESSION_KEY, JSON.stringify({
+        active: true,
+        joinTime: Date.now(),
+        clientId: CLIENT_ID
+    }));
+};
+
+// Load session state
+const loadSessionState = () => {
+    try {
+        const savedSession = localStorage.getItem(SESSION_STORAGE_KEY);
+        const roomSession = sessionStorage.getItem(ROOM_SESSION_KEY);
+        
+        if (savedSession) {
+            const sessionData = JSON.parse(savedSession);
+            
+            // Check if session is recent (within 24 hours) and from same device
+            const isRecentSession = (Date.now() - sessionData.timestamp) < 24 * 60 * 60 * 1000;
+            const isSameDevice = sessionData.userAgent === navigator.userAgent.substring(0, 100);
+            
+            if (isRecentSession && isSameDevice && sessionData.roomId === ROOM_ID) {
+                // Restore user preferences
+                isMicOn = sessionData.micState !== undefined ? sessionData.micState : true;
+                isVideoOn = sessionData.videoState !== undefined ? sessionData.videoState : true;
+                isNoiseSuppressionEnabled = sessionData.noiseSuppressionState !== undefined ? sessionData.noiseSuppressionState : true;
+                currentVideoDeviceIndex = sessionData.currentVideoDevice || 0;
+                currentAudioDeviceIndex = sessionData.currentAudioDevice || 0;
+            }
+        }
+        
+        // Check for active room session to prevent multi-tab issues
+        if (roomSession) {
+            const roomData = JSON.parse(roomSession);
+            if (roomData.active && roomData.clientId === CLIENT_ID) {
+                console.log('Existing session detected, restoring connection...');
+                return true;
+            }
+        }
+    } catch (error) {
+        console.warn('Failed to load session state:', error);
+    }
+    
+    return false;
+};
+
+// Prevent multiple tabs/windows of same room
+const preventMultiSession = () => {
+    // Check if another tab has this room open
+    const existingSession = sessionStorage.getItem(ROOM_SESSION_KEY);
+    if (existingSession) {
+        try {
+            const sessionData = JSON.parse(existingSession);
+            if (sessionData.active && sessionData.clientId === CLIENT_ID) {
+                // Another tab might be active, show warning
+                showMultiSessionWarning();
+                return false;
+            }
+        } catch (error) {
+            // Invalid session data, clear it
+            sessionStorage.removeItem(ROOM_SESSION_KEY);
+        }
+    }
+    
+    // Mark this session as active
+    sessionStorage.setItem(ROOM_SESSION_KEY, JSON.stringify({
+        active: true,
+        joinTime: Date.now(),
+        clientId: CLIENT_ID
+    }));
+    
+    return true;
+};
+
+const showMultiSessionWarning = () => {
+    const existingWarning = document.querySelector('.multi-session-warning');
+    if (existingWarning) return;
+    
+    const warning = document.createElement('div');
+    warning.className = 'multi-session-warning';
+    warning.innerHTML = `
+        <div class="warning-content">
+            <h3>Multiple Sessions Detected</h3>
+            <p>This room appears to be open in another tab or window. For the best experience, please close other instances.</p>
+            <button onclick="this.parentElement.parentElement.remove()">Continue Anyway</button>
+        </div>
+    `;
+    document.body.appendChild(warning);
+};
+
+// Session cleanup
+const cleanupSession = () => {
+    sessionStorage.removeItem(ROOM_SESSION_KEY);
+    // Don't remove localStorage session data, keep for preference restoration
+};
+
+// Handle page visibility and cleanup
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        // Page is hidden, save current state
+        saveSessionState();
+    }
+});
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    cleanupSession();
+    saveSessionState();
+});
+
+// Save state periodically
+setInterval(saveSessionState, 30000); // Save every 30 seconds
 
 const configuration = {
     iceServers: [
@@ -77,17 +209,39 @@ const joinRoom = () => {
 };
 
 const initializeRoom = async () => {
+    // Load session state and check for multi-session
+    const hasExistingSession = loadSessionState();
+    
+    if (!preventMultiSession()) {
+        console.warn('Multiple session detected, continuing with warning');
+    }
+    
     // A. Initialize UI Controls
     initializeControls();
+    
+    // B. Initialize mobile controls collapse functionality
+    initializeControlsCollapse();
+    
+    // C. Initialize auto-hide UI for mobile
+    initializeAutoHideUI();
+    
+    // C2. Create ultra-minimal controls for mobile
+    if (window.innerWidth <= 768) {
+        createUltraMinimalControls();
+    }
 
-    // B. Get available media devices
+    // D. Get available media devices
     await getVideoDevices();
 
-    // C. Start the camera and join the socket room
+    // E. Start the camera and join the socket room
     try {
         await startMedia();
-    // send clientId to let server optionally dedupe persistent clients (server may ignore it)
-    socket.emit('join-room', { roomId: ROOM_ID, clientId: CLIENT_ID });
+        
+        // Save initial session state
+        saveSessionState();
+        
+        // Send clientId to let server optionally dedupe persistent clients (server may ignore it)
+        socket.emit('join-room', { roomId: ROOM_ID, clientId: CLIENT_ID });
     } catch (error) {
         console.error('Failed to get local stream', error);
         alert('Could not access your camera and microphone. Please check permissions.');
@@ -113,6 +267,10 @@ async function startMedia(videoDeviceId = undefined, audioSettings = { echoCance
     });
 
     localVideo.srcObject = localStream;
+    
+    // Add premium name tag for local video (You)
+    addLocalVideoLabel();
+    
     // When starting media, ensure tracks are sent to existing peers
     updateAllPeerTracks();
 }
@@ -130,6 +288,66 @@ async function getVideoDevices() {
     } catch (error) {
         console.error('Error enumerating devices:', error);
     }
+}
+
+// Premium video labeling functions
+function addLocalVideoLabel() {
+    const localContainer = document.getElementById('local-video-container');
+    if (!localContainer) return;
+    
+    // Remove existing label if any
+    const existingLabel = localContainer.querySelector('.name-tag');
+    if (existingLabel) existingLabel.remove();
+    
+    // Create premium "You" label
+    const nameTag = document.createElement('span');
+    nameTag.classList.add('name-tag');
+    nameTag.innerText = 'You';
+    nameTag.style.cssText = `
+        position: absolute !important;
+        bottom: 8px !important;
+        left: 8px !important;
+        right: 8px !important;
+        text-align: center !important;
+        background: rgba(0, 0, 0, 0.85) !important;
+        backdrop-filter: blur(20px) !important;
+        color: rgba(255, 255, 255, 0.95) !important;
+        padding: 4px 8px !important;
+        border-radius: 8px !important;
+        font-size: 0.75rem !important;
+        font-weight: 600 !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    `;
+    
+    localContainer.appendChild(nameTag);
+}
+
+function createPremiumPeerLabel(peerId, isMain = false) {
+    const nameTag = document.createElement('span');
+    nameTag.classList.add('name-tag');
+    
+    // Use more specific peer identification
+    const peerNumber = Object.keys(peers).indexOf(peerId) + 1;
+    nameTag.innerText = `Peer ${peerNumber}`;
+    
+    // Apply mobile-specific styling if needed
+    if (window.innerWidth <= 768) {
+        if (isMain) {
+            nameTag.style.cssText = `
+                position: absolute !important;
+                bottom: calc(120px + env(safe-area-inset-bottom, 20px)) !important;
+                left: 20px !important;
+                padding: 12px 20px !important;
+                font-size: 1.1rem !important;
+                background: rgba(22, 22, 23, 0.9) !important;
+                backdrop-filter: blur(30px) saturate(2) !important;
+                border: 2px solid rgba(255, 255, 255, 0.25) !important;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+            `;
+        }
+    }
+    
+    return nameTag;
 }
 
 // Network Quality Monitoring
@@ -704,17 +922,22 @@ function initializeControls() {
         const onTapStart = (e) => {
             const now = Date.now();
             if (now - lastTap < 300) {
-                // double-tap
+                // double-tap: expand/collapse
+                e.preventDefault();
                 localContainer.classList.toggle('local-expanded');
-                // ensure minimized is removed
-                localContainer.classList.remove('local-minimized');
+                // ensure minimized is removed when expanding
+                if (localContainer.classList.contains('local-expanded')) {
+                    localContainer.classList.remove('local-minimized');
+                }
             }
             lastTap = now;
 
-            // start long-press timer (600ms)
+            // start long-press timer (600ms) for minimize
             longPressTimer = setTimeout(() => {
                 localContainer.classList.add('local-minimized');
                 localContainer.classList.remove('local-expanded');
+                // haptic feedback on mobile if available
+                if (navigator.vibrate) navigator.vibrate(50);
             }, 600);
         };
 
@@ -725,6 +948,11 @@ function initializeControls() {
         localContainer.addEventListener('pointerdown', onTapStart);
         localContainer.addEventListener('pointerup', onTapEnd);
         localContainer.addEventListener('pointercancel', onTapEnd);
+        
+        // Disable dragging on mobile since we have fixed positioning
+        if (window.innerWidth <= 768) {
+            return; // Skip drag setup on mobile
+        }
     }
 }
 
@@ -843,7 +1071,14 @@ function updateConnectionStatus(status) {
 function updateParticipantCount() {
     const participantCounter = document.getElementById('participant-counter');
     if (participantCounter) {
-        participantCounter.textContent = `${participantCount} participant${participantCount !== 1 ? 's' : ''}`;
+        // Shorter text for mobile
+        if (participantCount === 1) {
+            participantCounter.textContent = '1 person';
+        } else if (participantCount <= 9) {
+            participantCounter.textContent = `${participantCount} people`;
+        } else {
+            participantCounter.textContent = '9+ people';
+        }
     }
 }
 
@@ -915,6 +1150,9 @@ const callUser = async (userId) => {
 // Setup handlers for an RTCDataChannel
 function setupDataChannel(channel, userId) {
     dataChannels[userId] = channel;
+
+    // Ensure binary data arrives as ArrayBuffer for consistent handling
+    try { channel.binaryType = 'arraybuffer'; } catch (e) { /* some browsers readonly - ignore */ }
 
     channel.onopen = () => {
         console.log('Data channel open for', userId);
@@ -1119,13 +1357,17 @@ async function sendFileToPeers(file) {
         const dc = dataChannels[peerId];
         if (dc && dc.readyState === 'open') {
             try {
-                dc.send(JSON.stringify({ type: 'file-meta', name: file.name, size: file.size, transferId, checksum, typeMime: file.type }));
+                // Use `type` as the mime field name so receiver.meta.type is defined.
+                dc.send(JSON.stringify({ type: 'file-meta', name: file.name, size: file.size, transferId, checksum, type: file.type }));
             } catch(e) { console.warn('meta send failed', e); }
         }
     }
 
+    // Give a short breather so remote peers can process the file-meta message and set up receivers
+    await new Promise(r => setTimeout(r, 100));
+
     const stream = file.stream ? file.stream() : null;
-    if (stream) {
+        if (stream) {
         // modern browsers: use stream reader
         const reader = stream.getReader();
         let sent = 0;
@@ -1133,18 +1375,18 @@ async function sendFileToPeers(file) {
             const { done, value } = await reader.read();
             if (done) break;
             sent += value.byteLength || value.length || 0;
-            for (const peerId in dataChannels) {
+            // Only iterate peers that we initialized for this transfer (avoid sending to closed/unexpected channels)
+            for (const peerId in transfers[transferId].perPeer) {
                 const dc = dataChannels[peerId];
-                if (dc && dc.readyState === 'open') {
-                    try {
-                        if (transfers[transferId] && transfers[transferId].aborted) break;
-                        dc.send(value);
-                            const bytesSent = (transfers[transferId].perPeer[peerId] || 0) + (value.byteLength || value.length || 0);
-                            transfers[transferId].perPeer[peerId] = bytesSent;
-                            updatePerPeerProgress(transferId, peerId, bytesSent / file.size);
-                        if (dc.bufferedAmount > HIGH_WATER) await waitForBufferedAmount(dc, LOW_WATER);
-                    } catch (e) { console.warn('DC send chunk failed', e); }
-                }
+                if (!dc || dc.readyState !== 'open') continue;
+                try {
+                    if (transfers[transferId] && transfers[transferId].aborted) break;
+                    dc.send(value);
+                    const bytesSent = (transfers[transferId].perPeer[peerId] || 0) + (value.byteLength || value.length || 0);
+                    transfers[transferId].perPeer[peerId] = bytesSent;
+                    updatePerPeerProgress(transferId, peerId, bytesSent / file.size);
+                    if (dc.bufferedAmount > HIGH_WATER) await waitForBufferedAmount(dc, LOW_WATER);
+                } catch (e) { console.warn('DC send chunk failed', e); }
             }
             const frac = Math.min(1, sent / file.size);
             updateChatProgress(transferId, frac);
@@ -1157,18 +1399,18 @@ async function sendFileToPeers(file) {
         while (offset < file.size) {
             const slice = file.slice(offset, offset + CHUNK_SIZE);
             const arrayBuffer = await slice.arrayBuffer();
-            for (const peerId in dataChannels) {
+            // Only iterate peers that we initialized for this transfer
+            for (const peerId in transfers[transferId].perPeer) {
                 const dc = dataChannels[peerId];
-                if (dc && dc.readyState === 'open') {
-                    try {
-                        if (transfers[transferId] && transfers[transferId].aborted) break;
-                        dc.send(arrayBuffer);
-                            const bytesSent = (transfers[transferId].perPeer[peerId] || 0) + (arrayBuffer.byteLength || arrayBuffer.length || 0);
-                            transfers[transferId].perPeer[peerId] = bytesSent;
-                            updatePerPeerProgress(transferId, peerId, bytesSent / file.size);
-                        if (dc.bufferedAmount > HIGH_WATER) await waitForBufferedAmount(dc, LOW_WATER);
-                    } catch (e) { console.warn('DC send chunk failed', e); }
-                }
+                if (!dc || dc.readyState !== 'open') continue;
+                try {
+                    if (transfers[transferId] && transfers[transferId].aborted) break;
+                    dc.send(arrayBuffer);
+                    const bytesSent = (transfers[transferId].perPeer[peerId] || 0) + (arrayBuffer.byteLength || arrayBuffer.length || 0);
+                    transfers[transferId].perPeer[peerId] = bytesSent;
+                    updatePerPeerProgress(transferId, peerId, bytesSent / file.size);
+                    if (dc.bufferedAmount > HIGH_WATER) await waitForBufferedAmount(dc, LOW_WATER);
+                } catch (e) { console.warn('DC send chunk failed', e); }
             }
             offset += CHUNK_SIZE;
             sent += arrayBuffer.byteLength || arrayBuffer.length || 0;
@@ -1242,11 +1484,531 @@ function toggleElementFullscreen(el) {
     }
 }
 
+// PREMIUM MULTI-PARTICIPANT LAYOUT SYSTEM
+function applyPremiumMultiParticipantLayout() {
+    const peerContainers = document.querySelectorAll('.video-container[data-user-id]');
+    const localContainer = document.getElementById('local-video-container');
+    const participantCount = peerContainers.length;
+    
+    if (participantCount === 0) return;
+    
+    if (window.innerWidth <= 768) {
+        applyMobileVideoLayout();
+        return;
+    }
+    
+    // Desktop layouts based on participant count
+    const videoGrid = document.getElementById('video-grid');
+    
+    switch (participantCount) {
+        case 1:
+            // Single peer - centered large view
+            setupSingleParticipantLayout(peerContainers[0]);
+            break;
+        case 2:
+            // Two peers - side by side
+            setupTwoParticipantLayout(peerContainers);
+            break;
+        case 3:
+            // Three peers - one large, two small
+            setupThreeParticipantLayout(peerContainers);
+            break;
+        case 4:
+            // Four peers - 2x2 grid
+            setupFourParticipantLayout(peerContainers);
+            break;
+        default:
+            // 5+ peers - dynamic grid with focus
+            setupMultiParticipantGrid(peerContainers);
+            break;
+    }
+    
+    // Position local video appropriately
+    if (localContainer) {
+        localContainer.style.cssText = `
+            position: fixed !important;
+            bottom: calc(100px + env(safe-area-inset-bottom, 20px)) !important;
+            right: 20px !important;
+            width: clamp(120px, 20vw, 200px) !important;
+            height: clamp(90px, 15vw, 150px) !important;
+            z-index: 100 !important;
+            border-radius: 12px !important;
+            border: 2px solid var(--primary) !important;
+            overflow: hidden !important;
+            background: #000 !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
+            transition: all 0.3s ease !important;
+        `;
+    }
+}
+
+function setupSingleParticipantLayout(container) {
+    container.style.cssText = `
+        position: absolute !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        width: min(90vw, 1200px) !important;
+        height: min(80vh, 675px) !important;
+        border-radius: 16px !important;
+        overflow: hidden !important;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3) !important;
+        border: 2px solid rgba(255,255,255,0.1) !important;
+    `;
+    
+    const video = container.querySelector('video');
+    if (video) {
+        video.style.cssText = `
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+        `;
+    }
+}
+
+function setupTwoParticipantLayout(containers) {
+    containers.forEach((container, index) => {
+        container.style.cssText = `
+            position: absolute !important;
+            top: 50% !important;
+            left: ${index === 0 ? '25%' : '75%'} !important;
+            transform: translate(-50%, -50%) !important;
+            width: min(40vw, 600px) !important;
+            height: min(70vh, 450px) !important;
+            border-radius: 16px !important;
+            overflow: hidden !important;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.25) !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+        `;
+        
+        const video = container.querySelector('video');
+        if (video) {
+            video.style.cssText = `
+                width: 100% !important;
+                height: 100% !important;
+                object-fit: cover !important;
+            `;
+        }
+    });
+}
+
+function setupThreeParticipantLayout(containers) {
+    containers.forEach((container, index) => {
+        if (index === 0) {
+            // Main speaker - larger
+            container.style.cssText = `
+                position: absolute !important;
+                top: 50% !important;
+                left: 30% !important;
+                transform: translate(-50%, -50%) !important;
+                width: min(50vw, 700px) !important;
+                height: min(70vh, 500px) !important;
+                border-radius: 16px !important;
+                overflow: hidden !important;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3) !important;
+                border: 2px solid rgba(59, 130, 246, 0.3) !important;
+            `;
+        } else {
+            // Side participants
+            const topPos = index === 1 ? '25%' : '75%';
+            container.style.cssText = `
+                position: absolute !important;
+                top: ${topPos} !important;
+                right: 40px !important;
+                transform: translateY(-50%) !important;
+                width: min(25vw, 350px) !important;
+                height: min(30vh, 200px) !important;
+                border-radius: 12px !important;
+                overflow: hidden !important;
+                box-shadow: 0 12px 36px rgba(0,0,0,0.2) !important;
+                border: 1px solid rgba(255,255,255,0.1) !important;
+            `;
+        }
+        
+        const video = container.querySelector('video');
+        if (video) {
+            video.style.cssText = `
+                width: 100% !important;
+                height: 100% !important;
+                object-fit: cover !important;
+            `;
+        }
+    });
+}
+
+function setupFourParticipantLayout(containers) {
+    containers.forEach((container, index) => {
+        const row = Math.floor(index / 2);
+        const col = index % 2;
+        
+        container.style.cssText = `
+            position: absolute !important;
+            top: ${25 + row * 50}% !important;
+            left: ${25 + col * 50}% !important;
+            transform: translate(-50%, -50%) !important;
+            width: min(40vw, 550px) !important;
+            height: min(35vh, 300px) !important;
+            border-radius: 12px !important;
+            overflow: hidden !important;
+            box-shadow: 0 12px 36px rgba(0,0,0,0.2) !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+        `;
+        
+        const video = container.querySelector('video');
+        if (video) {
+            video.style.cssText = `
+                width: 100% !important;
+                height: 100% !important;
+                object-fit: cover !important;
+            `;
+        }
+    });
+}
+
+function setupMultiParticipantGrid(containers) {
+    const participantCount = containers.length;
+    const cols = Math.ceil(Math.sqrt(participantCount));
+    const rows = Math.ceil(participantCount / cols);
+    
+    containers.forEach((container, index) => {
+        const row = Math.floor(index / cols);
+        const col = index % cols;
+        
+        const containerWidth = 90 / cols;
+        const containerHeight = 80 / rows;
+        
+        container.style.cssText = `
+            position: absolute !important;
+            top: ${10 + row * (containerHeight + 2)}% !important;
+            left: ${5 + col * (containerWidth + 2)}% !important;
+            width: ${containerWidth}% !important;
+            height: ${containerHeight}% !important;
+            border-radius: 12px !important;
+            overflow: hidden !important;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            transition: all 0.3s ease !important;
+        `;
+        
+        // Add hover effect for multi-participant grid
+        container.addEventListener('mouseenter', () => {
+            container.style.transform = 'scale(1.05)';
+            container.style.zIndex = '50';
+            container.style.boxShadow = '0 16px 48px rgba(0,0,0,0.3)';
+        });
+        
+        container.addEventListener('mouseleave', () => {
+            container.style.transform = 'scale(1)';
+            container.style.zIndex = 'auto';
+            container.style.boxShadow = '0 8px 24px rgba(0,0,0,0.15)';
+        });
+        
+        const video = container.querySelector('video');
+        if (video) {
+            video.style.cssText = `
+                width: 100% !important;
+                height: 100% !important;
+                object-fit: cover !important;
+            `;
+        }
+    });
+}
+
+// MOBILE LAYOUT (keep existing but simplified)
+function applyMobileVideoLayout() {
+    const peerContainers = document.querySelectorAll('.video-container[data-user-id]');
+    const localContainer = document.getElementById('local-video-container');
+    
+    if (peerContainers.length === 0) return;
+    
+    // Hide local video from video grid and position it as overlay
+    if (localContainer) {
+        localContainer.style.cssText = `
+            position: fixed !important;
+            top: calc(50px + env(safe-area-inset-top, 20px)) !important;
+            right: 20px !important;
+            width: 120px !important;
+            height: 160px !important;
+            z-index: 100 !important;
+            border-radius: 20px !important;
+            border: 3px solid rgba(255, 255, 255, 0.95) !important;
+            overflow: hidden !important;
+            background: #000 !important;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6) !important;
+        `;
+    }
+    
+    // Make the first peer take full screen
+    peerContainers.forEach((container, index) => {
+        if (index === 0) {
+            // Main peer - full screen
+            container.style.cssText = `
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                z-index: 1 !important;
+                background: #000 !important;
+                border: none !important;
+                border-radius: 0 !important;
+            `;
+            
+            const video = container.querySelector('video');
+            if (video) {
+                video.style.cssText = `
+                    width: 100% !important;
+                    height: 100% !important;
+                    object-fit: cover !important;
+                    border-radius: 0 !important;
+                `;
+            }
+            
+            const nameTag = container.querySelector('.name-tag');
+            if (nameTag) {
+                nameTag.style.cssText = `
+                    position: absolute !important;
+                    bottom: calc(120px + env(safe-area-inset-bottom, 20px)) !important;
+                    left: 20px !important;
+                    padding: 8px 16px !important;
+                    font-size: 0.9rem !important;
+                    background: rgba(22, 22, 23, 0.9) !important;
+                    backdrop-filter: blur(30px) saturate(2) !important;
+                    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+                    border-radius: 12px !important;
+                    color: white !important;
+                    font-weight: 600 !important;
+                    box-shadow: 0 6px 20px rgba(0,0,0,0.4) !important;
+                    z-index: 20 !important;
+                    max-width: 120px !important;
+                    overflow: hidden !important;
+                    text-overflow: ellipsis !important;
+                `;
+            }
+        } else {
+            // Additional peers as overlays
+            const rightPosition = 150 + (index - 1) * 130;
+            container.style.cssText = `
+                position: fixed !important;
+                bottom: calc(120px + env(safe-area-inset-bottom, 0px)) !important;
+                right: ${rightPosition}px !important;
+                width: 110px !important;
+                height: 147px !important;
+                background: #000 !important;
+                border-radius: 16px !important;
+                border: 2px solid rgba(255,255,255,0.8) !important;
+                overflow: hidden !important;
+                z-index: 10 !important;
+                box-shadow: 0 6px 24px rgba(0,0,0,0.5) !important;
+            `;
+            
+            const video = container.querySelector('video');
+            if (video) {
+                video.style.cssText = `
+                    width: 100% !important;
+                    height: 100% !important;
+                    object-fit: cover !important;
+                    border-radius: inherit !important;
+                `;
+            }
+        }
+    });
+}
+
+function swapPeerToMain(clickedContainer) {
+    const peerContainers = document.querySelectorAll('.video-container[data-user-id]');
+    if (peerContainers.length <= 1) return;
+    
+    // Find current main peer (index 0)
+    const currentMain = peerContainers[0];
+    if (currentMain === clickedContainer) return;
+    
+    // Reorder DOM elements
+    const videoGrid = document.getElementById('video-grid');
+    videoGrid.removeChild(clickedContainer);
+    videoGrid.insertBefore(clickedContainer, currentMain);
+    
+    // Re-apply mobile layout
+    applyMobileVideoLayout();
+}
+
+// Controls collapse functionality
+let controlsCollapsed = false;
+
+function initializeControlsCollapse() {
+    const controlsToggleBtn = document.getElementById('controls-toggle-btn');
+    const controls = document.getElementById('controls');
+    
+    if (!controlsToggleBtn || !controls) return;
+    
+    // Start with minimal UI on mobile (only 3 essential buttons)
+    if (window.innerWidth <= 768) {
+        controlsCollapsed = false; // We want to START with collapsed (minimal) state
+        applyMobileControls(true); // true = minimal mode
+    }
+    
+    controlsToggleBtn.addEventListener('click', () => {
+        controlsCollapsed = !controlsCollapsed;
+        applyMobileControls(controlsCollapsed);
+    });
+}
+
+// Auto-hide UI functionality
+let uiHideTimeout;
+let uiVisible = true;
+let resetHideTimer; // Make this global
+
+function initializeAutoHideUI() {
+    if (window.innerWidth > 768) return; // Only for mobile
+    
+    const controlsElement = document.getElementById('controls');
+    const participantCount = document.querySelector('.participant-count');
+    const connectionStatus = document.querySelector('.connection-status');
+    const localContainer = document.getElementById('local-video-container');
+    
+    const uiElements = [controlsElement, participantCount, connectionStatus, localContainer].filter(el => el);
+    
+    function hideUI() {
+        uiVisible = false;
+        uiElements.forEach(el => {
+            if (el) {
+                el.style.opacity = '0';
+                el.style.pointerEvents = 'none';
+                el.style.transition = 'opacity 0.3s ease-out';
+            }
+        });
+    }
+    
+    function showUI() {
+        uiVisible = true;
+        uiElements.forEach(el => {
+            if (el) {
+                el.style.opacity = '1';
+                el.style.pointerEvents = 'auto';
+                el.style.transition = 'opacity 0.3s ease-in';
+            }
+        });
+        resetHideTimer();
+    }
+    
+    resetHideTimer = function() {
+        clearTimeout(uiHideTimeout);
+        uiHideTimeout = setTimeout(hideUI, 5000); // Hide after 5 seconds
+    };
+    
+    // Show UI on any interaction
+    function handleUserInteraction() {
+        if (!uiVisible) {
+            showUI();
+        } else {
+            resetHideTimer();
+        }
+    }
+    
+    // Add event listeners for user interactions
+    document.addEventListener('touchstart', handleUserInteraction);
+    document.addEventListener('click', handleUserInteraction);
+    document.addEventListener('mousemove', handleUserInteraction);
+    document.addEventListener('keydown', handleUserInteraction);
+    
+    // Also show UI when peer videos are tapped
+    const videoGrid = document.getElementById('video-grid');
+    if (videoGrid) {
+        videoGrid.addEventListener('click', handleUserInteraction);
+    }
+    
+    // Start the hide timer
+    resetHideTimer();
+}
+
+function applyMobileControls(isMinimal) {
+    const controls = document.getElementById('controls');
+    const controlsToggleBtn = document.getElementById('controls-toggle-btn');
+    
+    if (!controls || !controlsToggleBtn) return;
+    
+    if (isMinimal) {
+        // MINIMAL MODE: Only 3 essential buttons + more button
+        controls.style.cssText = `
+            position: fixed !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+            width: auto !important;
+            border-radius: 24px !important;
+            padding: 12px 16px !important;
+            display: flex !important;
+            gap: 16px !important;
+            z-index: 100 !important;
+            background: rgba(22, 22, 23, 0.85) !important;
+            backdrop-filter: blur(40px) saturate(1.8) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6) !important;
+        `;
+        
+        // Show only essential buttons
+        const allButtons = controls.querySelectorAll('.control-btn');
+        allButtons.forEach(btn => {
+            if (['mic-btn', 'video-btn', 'end-call-btn', 'controls-toggle-btn'].includes(btn.id)) {
+                btn.style.display = 'flex';
+            } else {
+                btn.style.display = 'none';
+            }
+        });
+        
+        // Update toggle button to show "more" icon
+        controlsToggleBtn.innerHTML = `
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="1"></circle>
+                <circle cx="19" cy="12" r="1"></circle>
+                <circle cx="5" cy="12" r="1"></circle>
+            </svg>
+        `;
+        controlsToggleBtn.title = 'More controls';
+        
+    } else {
+        // FULL MODE: All controls in grid
+        controls.style.cssText = `
+            position: fixed !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+            width: auto !important;
+            max-width: 320px !important;
+            border-radius: 24px !important;
+            padding: 12px 16px !important;
+            display: grid !important;
+            grid-template-columns: repeat(4, 1fr) !important;
+            gap: 8px !important;
+            z-index: 100 !important;
+            background: rgba(22, 22, 23, 0.85) !important;
+            backdrop-filter: blur(40px) saturate(1.8) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6) !important;
+        `;
+        
+        // Show all buttons
+        const allButtons = controls.querySelectorAll('.control-btn');
+        allButtons.forEach(btn => {
+            btn.style.display = 'flex';
+        });
+        
+        // Update toggle button to show "less" icon
+        controlsToggleBtn.innerHTML = `
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+        `;
+        controlsToggleBtn.title = 'Less controls';
+    }
+}
+
 const addRemoteStream = (userId, stream) => {
     if (document.getElementById(userId)) return;
 
     const videoContainer = document.createElement('div');
     videoContainer.classList.add('video-container');
+    videoContainer.setAttribute('data-user-id', userId);
     
     const remoteVideo = document.createElement('video');
     remoteVideo.id = userId;
@@ -1260,17 +2022,210 @@ const addRemoteStream = (userId, stream) => {
         if (p && p.catch) p.catch(err => { /* ignore autoplay errors until user interacts */ });
     });
 
-    const nameTag = document.createElement('span');
-    nameTag.classList.add('name-tag');
-    nameTag.innerText = 'Peer';
+    // Create premium peer label
+    const isFirstPeer = videoGrid.children.length === 0;
+    const nameTag = createPremiumPeerLabel(userId, isFirstPeer);
+
+    // Add sizing toggle button for peer videos
+    const sizingToggle = document.createElement('button');
+    sizingToggle.className = 'peer-sizing-toggle';
+    sizingToggle.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zm-10-7h9v6h-9z"/>
+        </svg>
+    `;
+    sizingToggle.title = 'Toggle video size';
+    sizingToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        togglePeerVideoSize(videoContainer);
+    });
 
     videoContainer.appendChild(remoteVideo);
     videoContainer.appendChild(nameTag);
+    videoContainer.appendChild(sizingToggle);
     videoGrid.appendChild(videoContainer);
 
-    // Allow double-click to fullscreen the specific peer video and single click to focus for PiP
-    remoteVideo.addEventListener('dblclick', () => toggleElementFullscreen(remoteVideo));
-    remoteVideo.addEventListener('click', () => setFocusedVideo(remoteVideo));
+    // COMPLETELY NEW APPROACH: Force mobile layout with JavaScript
+    if (window.innerWidth <= 768) {
+        applyMobileVideoLayout();
+        // Reset UI hide timer when new peer joins
+        if (resetHideTimer) {
+            resetHideTimer();
+        }
+    } else {
+        // Use premium multi-participant layout for desktop
+        applyPremiumMultiParticipantLayout();
+    }
+
+    // Mobile: tap to bring peer to main view
+    if (window.innerWidth <= 768) {
+        videoContainer.addEventListener('click', () => {
+            swapPeerToMain(videoContainer);
+        });
+    } else {
+        // Desktop: double-click to fullscreen, single click to focus for PiP
+        remoteVideo.addEventListener('dblclick', () => toggleElementFullscreen(remoteVideo));
+        remoteVideo.addEventListener('click', () => setFocusedVideo(remoteVideo));
+    }
+};
+
+// Handle window resize to reapply mobile layout
+window.addEventListener('resize', () => {
+    if (window.innerWidth <= 768) {
+        const peerContainers = document.querySelectorAll('.video-container[data-user-id]');
+        if (peerContainers.length > 0) {
+            applyMobileVideoLayout();
+        }
+    } else {
+        const peerContainers = document.querySelectorAll('.video-container[data-user-id]');
+        if (peerContainers.length > 0) {
+            applyPremiumMultiParticipantLayout();
+        }
+    }
+});
+
+// Toggle peer video sizing between fit-screen and original size
+const togglePeerVideoSize = (container) => {
+    const video = container.querySelector('video');
+    const toggle = container.querySelector('.peer-sizing-toggle');
+    
+    if (container.hasAttribute('data-sizing-mode')) {
+        // Switch back to cover (fit screen)
+        container.removeAttribute('data-sizing-mode');
+        video.style.objectFit = 'cover';
+        toggle.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zm-10-7h9v6h-9z"/>
+            </svg>
+        `;
+        toggle.title = 'Fit to screen';
+    } else {
+        // Switch to contain (original size)
+        container.setAttribute('data-sizing-mode', 'contain');
+        video.style.objectFit = 'contain';
+        toggle.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 12h-2v3h-3v2h5v-5zM7 9h3V7H5v5h2V9zm14-6H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"/>
+            </svg>
+        `;
+        toggle.title = 'Original size';
+    }
+};
+
+// Ultra-minimal UI mode for contact-like experience
+let isUltraMinimal = false;
+let ultraMinimalTimer = null;
+
+const toggleUltraMinimalMode = () => {
+    isUltraMinimal = !isUltraMinimal;
+    const body = document.body;
+    
+    if (isUltraMinimal) {
+        body.classList.add('ultra-minimal');
+        // Hide all UI elements except videos
+        const participantCount = document.querySelector('.participant-count');
+        const connectionStatus = document.querySelector('.connection-status');
+        if (participantCount) participantCount.style.display = 'none';
+        if (connectionStatus) connectionStatus.style.display = 'none';
+        
+        // Start ultra minimal mode with auto-hide
+        startUltraMinimalMode();
+    } else {
+        body.classList.remove('ultra-minimal');
+        // Restore normal UI
+        const participantCount = document.querySelector('.participant-count');
+        const connectionStatus = document.querySelector('.connection-status');
+        if (participantCount) participantCount.style.display = 'block';
+        if (connectionStatus) connectionStatus.style.display = 'flex';
+        
+        stopUltraMinimalMode();
+        showUIElements();
+    }
+};
+
+const startUltraMinimalMode = () => {
+    // Add touch/click listeners for the entire screen
+    const showControlsTemporarily = () => {
+        document.body.classList.add('showing-controls');
+        showUIElements();
+        
+        // Clear existing timer
+        if (ultraMinimalTimer) {
+            clearTimeout(ultraMinimalTimer);
+        }
+        
+        // Hide UI again after 3 seconds
+        ultraMinimalTimer = setTimeout(() => {
+            document.body.classList.remove('showing-controls');
+            hideUICompletely();
+        }, 3000);
+    };
+    
+    // Add event listeners for showing controls
+    document.addEventListener('click', showControlsTemporarily);
+    document.addEventListener('touchstart', showControlsTemporarily);
+    
+    // Initially hide everything
+    setTimeout(() => {
+        hideUICompletely();
+    }, 2000);
+};
+
+const stopUltraMinimalMode = () => {
+    // Remove event listeners
+    const showControlsTemporarily = () => {};
+    document.removeEventListener('click', showControlsTemporarily);
+    document.removeEventListener('touchstart', showControlsTemporarily);
+    
+    // Clear timer
+    if (ultraMinimalTimer) {
+        clearTimeout(ultraMinimalTimer);
+        ultraMinimalTimer = null;
+    }
+    
+    document.body.classList.remove('showing-controls');
+};
+
+const hideUICompletely = () => {
+    const controls = document.getElementById('controls');
+    const localContainer = document.getElementById('local-video-container');
+    const nameTagsAll = document.querySelectorAll('.name-tag, .peer-sizing-toggle');
+    
+    if (controls) controls.style.opacity = '0';
+    if (localContainer) localContainer.style.opacity = '0.2';
+    nameTagsAll.forEach(tag => tag.style.opacity = '0');
+};
+
+const showUIElements = () => {
+    const controls = document.getElementById('controls');
+    const localContainer = document.getElementById('local-video-container');
+    const nameTagsAll = document.querySelectorAll('.name-tag, .peer-sizing-toggle');
+    
+    if (controls) controls.style.opacity = '1';
+    if (localContainer) localContainer.style.opacity = '1';
+    nameTagsAll.forEach(tag => tag.style.opacity = '1');
+};
+
+// Enhanced mobile controls with ultra-minimal mode
+const createUltraMinimalControls = () => {
+    const controls = document.getElementById('controls');
+    if (!controls || !window.innerWidth <= 768) return;
+    
+    // Create ultra-minimal floating button
+    const ultraMinimalBtn = document.createElement('button');
+    ultraMinimalBtn.className = 'control-btn ultra-minimal-toggle';
+    ultraMinimalBtn.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+        </svg>
+    `;
+    ultraMinimalBtn.title = 'Ultra minimal mode';
+    ultraMinimalBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleUltraMinimalMode();
+    });
+    
+    controls.appendChild(ultraMinimalBtn);
 };
 
 // --- RUN ---

@@ -469,16 +469,18 @@ button, input, select, textarea,
     background: var(--background);
 }
 
-#video-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: var(--spacing-md);
-    width: 100%;
-    height: 100%;
-    padding: var(--spacing-md);
-    place-items: center;
-    overflow: hidden;
-}
+/* Desktop Video Grid Layout */
+@media (min-width: 769px) {
+    #video-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: var(--spacing-md);
+        width: 100%;
+        height: 100%;
+        padding: var(--spacing-md);
+        place-items: center;
+        overflow: hidden;
+    }
 
 /* Single participant layout */
 #video-grid:has(.video-container:only-child) {
@@ -500,115 +502,117 @@ button, input, select, textarea,
 #video-grid:has(.video-container:nth-child(4)) {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
-}
+    }
 
-.video-container {
-    position: relative;
-    background: var(--surface);
-    border-radius: var(--radius);
-    overflow: hidden;
-    width: 100%;
-    height: 100%;
-    min-height: 200px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    transition: all var(--transition-normal);
-    border: 1px solid var(--border-subtle);
-}
+    .video-container {
+        position: relative;
+        background: var(--surface);
+        border-radius: var(--radius);
+        overflow: hidden;
+        width: 100%;
+        height: 100%;
+        min-height: 200px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        transition: all var(--transition-normal);
+        border: 1px solid var(--border-subtle);
+    }
 
-.video-container:hover {
-    transform: scale(1.02);
-    border-color: var(--primary-muted);
-}
+    .video-container:hover {
+        transform: scale(1.02);
+        border-color: var(--primary-muted);
+    }
 
-video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: filter var(--transition-normal);
-    border-radius: var(--radius);
-}
+    video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: filter var(--transition-normal);
+        border-radius: var(--radius);
+    }
 
-video#local-video {
-    transform: scaleX(-1); /* Mirror effect for local video */
-}
+    video#local-video {
+        transform: scaleX(-1); /* Mirror effect for local video */
+    }
 
-.name-tag {
-    position: absolute;
-    bottom: var(--spacing-sm);
-    left: var(--spacing-sm);
-    background: rgba(0, 0, 0, 0.65);
-    backdrop-filter: blur(20px) saturate(1.8);
-    color: rgba(255, 255, 255, 0.95);
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: var(--radius-sm);
-    font-size: 0.875rem;
-    font-weight: 500;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-}
+    .name-tag {
+        position: absolute;
+        bottom: var(--spacing-sm);
+        left: var(--spacing-sm);
+        background: rgba(0, 0, 0, 0.75);
+        backdrop-filter: blur(20px) saturate(1.8);
+        color: rgba(255, 255, 255, 0.95);
+        padding: 4px 8px;
+        border-radius: 8px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        max-width: 90px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
 
-#local-video-container {
-    position: absolute;
-    bottom: 100px;
-    right: var(--spacing-lg);
-    width: clamp(120px, 20vw, 200px);
-    height: clamp(90px, 15vw, 150px);
-    border: 2px solid var(--primary);
-    border-radius: var(--radius);
-    z-index: 10;
-    transition: all var(--transition-normal);
-    background: var(--surface);
-    overflow: hidden;
-}
+    #local-video-container {
+        position: absolute;
+        bottom: 100px;
+        right: var(--spacing-lg);
+        width: clamp(120px, 20vw, 200px);
+        height: clamp(90px, 15vw, 150px);
+        border: 2px solid var(--primary);
+        border-radius: var(--radius);
+        z-index: 10;
+        transition: all var(--transition-normal);
+        background: var(--surface);
+        overflow: hidden;
+    }
 
-#local-video-container:hover {
-    transform: scale(1.05);
-    border-color: var(--accent-secondary);
-}
+    #local-video-container:hover {
+        transform: scale(1.05);
+        border-color: var(--accent-secondary);
+    }
 
-/* Make local preview look premium and allow drag/resize */
-#local-video-container {
-    border-radius: 12px !important;
-    overflow: hidden;
-    touch-action: none; /* allow pointer dragging */
-    resize: both;
-}
+    /* Make local preview look premium and allow drag/resize */
+    #local-video-container {
+        border-radius: 12px !important;
+        overflow: hidden;
+        touch-action: none; /* allow pointer dragging */
+        resize: both;
+    }
 
-#local-video-container.resizing {
-    transition: none !important;
-    outline: 2px solid rgba(59,130,246,0.12) !important;
-}
+    #local-video-container.resizing {
+        transition: none !important;
+        outline: 2px solid rgba(59,130,246,0.12) !important;
+    }
 
-#local-video-container .name-tag {
-    bottom: 8px;
-    left: 8px;
-    background: rgba(10,10,10,0.7);
-    border: 1px solid rgba(255,255,255,0.06);
-}
+    #local-video-container .name-tag {
+        bottom: 8px;
+        left: 8px;
+        background: rgba(10,10,10,0.7);
+        border: 1px solid rgba(255,255,255,0.06);
+    }
 
-/* Drag handle visual (invisible but accessible) */
-#local-video-container::before {
-    content: '';
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    background: transparent;
-    z-index: 75;
-    cursor: move;
-}
+    /* Drag handle visual (invisible but accessible) */
+    #local-video-container::before {
+        content: '';
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        background: transparent;
+        z-index: 75;
+        cursor: move;
+    }
 
-/* Visual state while user is dragging/resizing - slightly lift the preview */
-#local-video-container.dragging {
-    transform: translateY(-4px) scale(1.02);
-    box-shadow: 0 18px 40px rgba(0,0,0,0.55);
-    z-index: 80 !important; /* lift above peers while dragging */
-}
-
-/* Collapsed controls look (single collapsed button) */
+    /* Visual state while user is dragging/resizing - slightly lift the preview */
+    #local-video-container.dragging {
+        transform: translateY(-4px) scale(1.02);
+        box-shadow: 0 18px 40px rgba(0,0,0,0.55);
+        z-index: 80 !important; /* lift above peers while dragging */
+    }/* Collapsed controls look (single collapsed button) */
 #controls.collapsed {
     width: 64px !important;
     left: auto !important;
@@ -636,6 +640,7 @@ video#local-video {
 .signal-quality.fair .b1, .signal-quality.fair .b2 { opacity: 1; }
 .signal-quality.poor .b1 { opacity: 1; color: var(--warning); }
 
+} /* End desktop media query */
 
 /* Controls */
 /* Controls container: fixed-size, stable layout to avoid jitter */
@@ -1686,6 +1691,152 @@ button, input, select, textarea {
 
 /* Force dark mode only - no light theme for video chat */
 
+/* Peer video sizing toggle */
+.peer-sizing-toggle {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 25;
+    transition: all 0.2s ease;
+    opacity: 0;
+}
+
+.video-container:hover .peer-sizing-toggle {
+    opacity: 1;
+}
+
+.peer-sizing-toggle:hover {
+    background: rgba(0, 0, 0, 0.9);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: scale(1.05);
+}
+
+.peer-sizing-toggle svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Ultra minimal mode */
+body.ultra-minimal .participant-count,
+body.ultra-minimal .connection-status,
+body.ultra-minimal .name-tag,
+body.ultra-minimal .peer-sizing-toggle {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+body.ultra-minimal #controls {
+    opacity: 0 !important;
+    transition: opacity 0.3s ease !important;
+}
+
+body.ultra-minimal #local-video-container {
+    opacity: 0.2 !important;
+    transition: opacity 0.3s ease !important;
+}
+
+/* Show controls on interaction in ultra minimal mode */
+body.ultra-minimal:hover #controls,
+body.ultra-minimal.showing-controls #controls {
+    opacity: 1 !important;
+}
+
+body.ultra-minimal:hover #local-video-container,
+body.ultra-minimal.showing-controls #local-video-container {
+    opacity: 1 !important;
+}
+
+/* Ultra minimal toggle button */
+.ultra-minimal-toggle {
+    background: rgba(108, 99, 255, 0.9) !important;
+    color: white !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+.ultra-minimal-toggle:hover {
+    background: rgba(108, 99, 255, 1) !important;
+    transform: scale(1.05) !important;
+}
+
+body.ultra-minimal .ultra-minimal-toggle {
+    background: rgba(34, 197, 94, 0.9) !important;
+}
+
+body.ultra-minimal .ultra-minimal-toggle:hover {
+    background: rgba(34, 197, 94, 1) !important;
+}
+
+/* Smooth transitions for ultra minimal mode */
+body.ultra-minimal * {
+    transition: opacity 0.5s ease !important;
+}
+
+/* Multi-session warning */
+.multi-session-warning {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.9);
+    backdrop-filter: blur(10px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.3s ease;
+}
+
+.warning-content {
+    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+    padding: var(--spacing-xl);
+    max-width: 400px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.warning-content h3 {
+    color: var(--warning);
+    margin-bottom: var(--spacing-md);
+    font-size: 1.25rem;
+}
+
+.warning-content p {
+    color: var(--foreground-muted);
+    margin-bottom: var(--spacing-lg);
+    line-height: 1.5;
+}
+
+.warning-content button {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-family: var(--font-system);
+    font-weight: 600;
+    transition: all var(--transition-fast);
+}
+
+.warning-content button:hover {
+    background: var(--primary-muted);
+    transform: translateY(-1px);
+}
+
 /* Focus styles for accessibility */
 .control-btn:focus-visible,
 button:focus-visible,
@@ -1735,44 +1886,147 @@ html, body, .view, .view.active, #room, #video-grid {
     border: 1px solid rgba(255,255,255,0.06) !important;
 }
 
-/* Make controls fixed & compact on mobile so they're always reachable */
+/* Premium iOS/macOS FaceTime Style Mobile Controls */
 @media (max-width: 768px) {
     #controls {
         position: fixed !important;
-        left: 12px !important;
-        right: 12px !important;
-        bottom: env(safe-area-inset-bottom, 12px) !important;
-        transform: none !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;
         width: auto !important;
         min-width: unset !important;
-        border-radius: 999px !important;
-        padding: 8px 10px !important;
+        border-radius: 24px !important;
+        padding: 12px 16px !important;
         display: flex !important;
         justify-content: center !important;
-        gap: 8px !important;
-        z-index: 60 !important;
-        background: rgba(18,18,18,0.9) !important;
-        border: 1px solid rgba(255,255,255,0.04) !important;
-        backdrop-filter: blur(8px) !important;
+        align-items: center !important;
+        gap: 16px !important;
+        z-index: 100 !important;
+        
+        /* Premium iOS glass morphism effect */
+        background: rgba(22, 22, 23, 0.85) !important;
+        backdrop-filter: blur(40px) saturate(1.8) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 
+                    0 0 0 1px rgba(255, 255, 255, 0.05) inset !important;
+        
+        /* Smooth animations */
+        transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
     }
 
-    /* Slightly smaller touch targets but still accessible */
+    /* Premium iOS-style control buttons */
     .control-btn {
-        width: 44px !important;
-        height: 44px !important;
-        border-radius: 50% !important;
+        width: 52px !important;
+        height: 52px !important;
+        border-radius: 26px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        font-size: 18px !important;
+        font-weight: 500 !important;
+        border: none !important;
+        cursor: pointer !important;
+        position: relative !important;
+        overflow: hidden !important;
+        
+        /* Default state - iOS style */
+        background: rgba(60, 60, 67, 0.6) !important;
+        color: rgba(255, 255, 255, 0.9) !important;
+        backdrop-filter: blur(20px) !important;
+        
+        /* Smooth hover/active transitions */
+        transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
     }
 
-    /* Local preview should sit above controls, not overlap them */
+    .control-btn:hover {
+        transform: scale(1.05) !important;
+        background: rgba(70, 70, 77, 0.8) !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+    }
+
+    .control-btn:active {
+        transform: scale(0.95) !important;
+    }
+
+    /* Active states - iOS style colors */
+    .control-btn.active {
+        background: rgba(52, 199, 89, 0.9) !important;
+        color: white !important;
+        box-shadow: 0 4px 16px rgba(52, 199, 89, 0.4) !important;
+    }
+
+    /* Danger button (end call) - iOS red */
+    .control-btn.danger,
+    .control-btn[data-action="leave"] {
+        background: rgba(255, 59, 48, 0.9) !important;
+        color: white !important;
+    }
+
+    .control-btn.danger:hover,
+    .control-btn[data-action="leave"]:hover {
+        background: rgba(255, 59, 48, 1) !important;
+        box-shadow: 0 4px 16px rgba(255, 59, 48, 0.4) !important;
+    }
+
+    /* Mute button special state */
+    .control-btn[data-action="toggle-mic"].muted {
+        background: rgba(255, 59, 48, 0.9) !important;
+        color: white !important;
+    }
+
+    /* Premium iOS-style local video preview (user video) */
     #local-video-container {
-        right: 14px !important;
-        bottom: calc(64px + env(safe-area-inset-bottom, 12px)) !important;
-        width: clamp(80px, 18vw, 120px) !important;
-        height: clamp(60px, 13vw, 90px) !important;
-        border-width: 1px !important;
-        border-color: rgba(255,255,255,0.08) !important;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.45) !important;
-        z-index: 70 !important;
+        position: fixed !important;
+        top: calc(50px + env(safe-area-inset-top, 20px)) !important;
+        right: 20px !important;
+        width: 120px !important;
+        height: 160px !important;
+        z-index: 90 !important;
+        
+        /* iOS-style premium design */
+        border-radius: 20px !important;
+        border: 3px solid rgba(255, 255, 255, 0.95) !important;
+        overflow: hidden !important;
+        background: #000 !important;
+        
+        /* Premium shadow like FaceTime */
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6),
+                    0 0 0 1px rgba(255, 255, 255, 0.1) inset !important;
+        
+        /* Smooth animations */
+        transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+    }
+
+    #local-video-container:hover {
+        transform: scale(1.02) !important;
+        border-color: rgba(255, 255, 255, 1) !important;
+        box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7),
+                    0 0 0 1px rgba(255, 255, 255, 0.2) inset !important;
+    }
+
+    /* Local video itself */
+    #local-video-container video {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+        border-radius: 17px !important; /* Slightly smaller than container for border effect */
+    }
+
+    /* User label for local video */
+    #local-video-container .name-tag {
+        position: absolute !important;
+        bottom: 8px !important;
+        left: 8px !important;
+        right: 8px !important;
+        text-align: center !important;
+        background: rgba(0, 0, 0, 0.85) !important;
+        backdrop-filter: blur(20px) !important;
+        color: rgba(255, 255, 255, 0.95) !important;
+        padding: 4px 8px !important;
+        border-radius: 8px !important;
+        font-size: 0.75rem !important;
+        font-weight: 600 !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
     }
 
     /* Keep chat panel accessible as bottom sheet on mobile */
@@ -1788,12 +2042,99 @@ html, body, .view, .view.active, #room, #video-grid {
         border-radius: var(--radius) var(--radius) 0 0 !important;
     }
 
-    /* Make sure the video grid can scroll if content is taller than viewport */
+    /* Mobile video layout - handled by JavaScript for better control */
+    #room {
+        background: #000 !important;
+    }
+    
     #video-grid {
+        position: relative !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        overflow: hidden !important;
+    }
+
+    /* Mobile video styles - will be applied via JavaScript */
+    video {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+    }
+
+    video#local-video {
+        transform: scaleX(-1) !important; /* Mirror effect for local video */
+    }
+
+    /* Mobile name tags - compact and responsive */
+    .name-tag {
+        position: absolute !important;
+        background: rgba(0, 0, 0, 0.9) !important;
+        backdrop-filter: blur(20px) saturate(1.8) !important;
+        color: rgba(255, 255, 255, 0.95) !important;
+        padding: 3px 8px !important;
+        border-radius: 12px !important;
+        font-size: 0.7rem !important;
+        font-weight: 600 !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        z-index: 20 !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+        
+        /* Size constraints for mobile */
+        max-width: 70px !important;
+        min-width: 35px !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+
+    /* Premium participant count indicator - top-left */
+    .participant-count {
+        position: fixed !important;
+        top: calc(20px + env(safe-area-inset-top, 20px)) !important;
+        left: 20px !important;
+        background: rgba(22, 22, 23, 0.9) !important;
+        backdrop-filter: blur(30px) saturate(1.8) !important;
+        color: rgba(255, 255, 255, 0.95) !important;
+        padding: 6px 12px !important;
+        border-radius: 16px !important;
+        font-size: 0.8rem !important;
+        font-weight: 600 !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        z-index: 95 !important;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.4) !important;
+        
+        /* Size constraints */
+        max-width: 120px !important;
+        min-width: 60px !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+
+    /* Connection status indicator - top-center */
+    .connection-status {
+        position: fixed !important;
+        top: calc(20px + env(safe-area-inset-top, 20px)) !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        background: rgba(52, 199, 89, 0.9) !important;
+        backdrop-filter: blur(20px) !important;
+        color: white !important;
+        padding: 6px 12px !important;
+        border-radius: 16px !important;
+        font-size: 0.8rem !important;
+        font-weight: 600 !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        z-index: 95 !important;
+        box-shadow: 0 4px 16px rgba(52, 199, 89, 0.3) !important;
+    }
+
+    /* Make sure the video grid can scroll if content is taller than viewport - OVERRIDDEN ABOVE */
+    /* #video-grid {
         height: calc(100vh - 140px) !important;
         overflow-y: auto !important;
-        padding-bottom: 160px !important; /* space for fixed controls + preview */
-    }
+        padding-bottom: 160px !important;
+    } */
 }
 
 @media (max-width: 480px) {
